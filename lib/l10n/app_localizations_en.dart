@@ -284,19 +284,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get resolution => 'Resolution';
-
-  @override
-  String get resolutionNative => 'Server default';
-
-  @override
-  String get resolutionWindow => 'Match window';
-
-  @override
-  String get resolutionUnsupported =>
-      'This server can\'t change its resolution, so the image is scaled locally.';
-
-  @override
   String get colorDepth => 'Color depth';
 
   @override
@@ -402,11 +389,22 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String qualityNoEffect(String encoding) {
-    return 'This server is sending $encoding, which is lossless, so image quality has no effect here. Lower the colour depth, resolution or frame rate to save bandwidth.';
+    return 'This server is sending $encoding, which is lossless, so image quality has no effect here. Lower the colour depth or frame rate to save bandwidth.';
   }
 
   @override
   String depthRejected(int bits) {
     return 'The server didn\'t accept $bits-bit colour, so the session stayed on the previous depth. The connection log has the details.';
   }
+
+  @override
+  String get qualityAuto => 'Auto';
+
+  @override
+  String get qualityAutoHint =>
+      'Auto lowers JPEG quality whenever the connection can’t keep up with the frame rate, and raises it again when there’s headroom.';
+
+  @override
+  String get qualityFixedHint =>
+      'Lower quality means smaller frames and a higher frame rate. Text and UI stay sharp; photos and video get blockier.';
 }

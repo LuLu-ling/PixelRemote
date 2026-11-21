@@ -15,6 +15,9 @@ final class FramePacer {
   late int _intervalUs;
   late double _bytesPerUs;
   double _tokens = 0;
+
+  /// How much of the last [nextDelay] was caused by the bandwidth cap alone.
+  Duration lastBandwidthWait = Duration.zero;
   int _lastRequestUs = -1 << 40, _lastRefillUs = 0;
 
   double get _burst => _bytesPerUs * _burstWindowUs;
@@ -36,9 +39,10 @@ final class FramePacer {
   /// How long to wait before the next request.
   Duration nextDelay() {
     _refill();
-    var waitUs = _intervalUs - (_clock.elapsedMicroseconds - _lastRequestUs);
-    if (_bytesPerUs > 0 && _tokens < 0) waitUs = max(waitUs, (-_tokens / _bytesPerUs).ceil());
-    return Duration(microseconds: max(0, waitUs));
+    final intervalUs = _intervalUs - (_clock.elapsedMicroseconds - _lastRequestUs);
+    final bandwidthUs = _bytesPerUs > 0 && _tokens < 0 ? (-_tokens / _bytesPerUs).ceil() : 0;
+    lastBandwidthWait = Duration(microseconds: max(0, bandwidthUs - max(0, intervalUs)));
+    return Duration(microseconds: max(0, max(intervalUs, bandwidthUs)));
   }
 
   void _refill() {

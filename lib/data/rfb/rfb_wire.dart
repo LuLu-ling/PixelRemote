@@ -6,11 +6,17 @@ import 'pixel_format.dart';
 abstract final class Encoding {
   static const raw = 0, copyRect = 1, tight = 7, zrle = 16;
   static const cursor = -239, desktopSize = -223, lastRect = -224;
-  static const desktopName = -307, extendedDesktopSize = -308;
+  static const desktopName = -307;
   static const extendedClipboard = -1063131698; // 0xC0A1E5CE
+
+  // Chroma subsampling for JPEG (TigerVNC/TurboVNC extension).
+  static const subsampNone = -768, subsamp420 = -767, subsamp422 = -766;
 
   static int jpegQuality(int level) => -32 + level;
   static int compressLevel(int level) => -256 + level;
+
+  /// JPEG quality 0–100 (TigerVNC/TurboVNC extension; others use [jpegQuality]).
+  static int fineQuality(int quality) => -512 + quality;
 
   static String name(int e) => switch (e) {
         raw => 'Raw',
@@ -23,10 +29,13 @@ abstract final class Encoding {
         desktopSize => 'DesktopSize',
         lastRect => 'LastRect',
         desktopName => 'DesktopName',
-        extendedDesktopSize => 'ExtendedDesktopSize',
         extendedClipboard => 'ExtendedClipboard',
-        >= -32 && <= -23 => 'JPEG quality ${e + 32}',
+        subsampNone => 'chroma 4:4:4',
+        subsamp420 => 'chroma 4:2:0',
+        subsamp422 => 'chroma 4:2:2',
+        >= -32 && <= -23 => 'JPEG level ${e + 32}',
         >= -256 && <= -247 => 'zlib level ${e + 256}',
+        >= -512 && <= -412 => 'JPEG quality ${e + 512}',
         _ => 'encoding $e',
       };
 }
@@ -42,12 +51,6 @@ String securityTypeName(int t) => switch (t) {
       30 => 'Apple DH',
       _ => '#$t',
     };
-
-final class RfbScreen {
-  const RfbScreen(this.id, this.x, this.y, this.width, this.height, this.flags);
-
-  final int id, x, y, width, height, flags;
-}
 
 /// Encoders for client-to-server messages (RFC 6143 §7.5 plus extensions).
 abstract final class ClientMessage {
@@ -87,25 +90,6 @@ abstract final class ClientMessage {
       ..setUint8(0, 6)
       ..setInt32(4, extended ? -payload.length : payload.length);
     return Uint8List.fromList([..._bytes(head), ...payload]);
-  }
-
-  static Uint8List setDesktopSize(int width, int height, List<RfbScreen> screens) {
-    final b = ByteData(8 + 16 * screens.length)
-      ..setUint8(0, 251)
-      ..setUint16(2, width)
-      ..setUint16(4, height)
-      ..setUint8(6, screens.length);
-    for (var i = 0; i < screens.length; i++) {
-      final s = screens[i], o = 8 + 16 * i;
-      b
-        ..setUint32(o, s.id)
-        ..setUint16(o + 4, s.x)
-        ..setUint16(o + 6, s.y)
-        ..setUint16(o + 8, s.width)
-        ..setUint16(o + 10, s.height)
-        ..setUint32(o + 12, s.flags);
-    }
-    return b.buffer.asUint8List();
   }
 
   static Uint8List _bytes(ByteData b) => b.buffer.asUint8List();

@@ -7,10 +7,21 @@ import '../pixel_format.dart';
 
 export '../framebuffer.dart' show RfbRect;
 
-/// Strategy for one RFB rectangle encoding. Returns a short label of what was
-/// decoded (e.g. "Tight JPEG") for statistics and the connection log.
+/// Outcome of decoding one rectangle.
+final class Decoded {
+  const Decoded(this.label, [this.draw]);
+
+  /// What was decoded (e.g. "Tight JPEG"), for statistics and the log.
+  final String label;
+
+  /// Set when drawing is deferred so slow decodes (JPEG in the engine) can run
+  /// in parallel: completes with the step that puts the pixels in place.
+  final Future<void Function()>? draw;
+}
+
+/// Strategy for one RFB rectangle encoding.
 abstract interface class RectDecoder {
-  Future<String> decode(ByteReader input, RfbRect r, Framebuffer fb, PixelFormat pf);
+  Future<Decoded> decode(ByteReader input, RfbRect r, Framebuffer fb, PixelFormat pf);
 }
 
 /// JPEG decoding is a platform capability; Tight depends only on this port.
@@ -21,19 +32,19 @@ abstract interface class JpegCodec {
 
 final class RawDecoder implements RectDecoder {
   @override
-  Future<String> decode(ByteReader input, RfbRect r, Framebuffer fb, PixelFormat pf) async {
+  Future<Decoded> decode(ByteReader input, RfbRect r, Framebuffer fb, PixelFormat pf) async {
     final n = r.w * r.h, size = pf.bytesPerPixel;
     fb.blit(r, pf.words(await input.read(n * size), 0, n, size));
-    return 'Raw';
+    return const Decoded('Raw');
   }
 }
 
 final class CopyRectDecoder implements RectDecoder {
   @override
-  Future<String> decode(ByteReader input, RfbRect r, Framebuffer fb, PixelFormat pf) async {
+  Future<Decoded> decode(ByteReader input, RfbRect r, Framebuffer fb, PixelFormat pf) async {
     final src = ByteData.sublistView(await input.read(4));
     fb.copy(src.getUint16(0), src.getUint16(2), r);
-    return 'CopyRect';
+    return const Decoded('CopyRect');
   }
 }
 

@@ -12,9 +12,9 @@ tunnel, the way `vncviewer -via` does, so the only port that needs to be reachab
   password and keyboard-interactive/2FA prompts.
 - **Host keys**: trust-on-first-use with a fingerprint dialog. Honours your OpenSSH `known_hosts`
   (including hashed entries) and refuses changed keys.
-- **Stream control, live**: quality presets (Tight JPEG levels or lossless), frame rate
-  **15/30/60/75/90/120/144/165**, resolution (server default, match window, or fixed presets via
-  ExtendedDesktopSize), colour depth (24/16/8-bit), and a **bandwidth cap**. Requests are pipelined
+- **Stream control, live**: image quality (**Auto**, Low, Balanced, High, Lossless), frame rate
+  **15/30/60/75/90/120/144/165**, colour depth (24/16/8-bit), and a **bandwidth cap**. Auto trades
+  JPEG quality for frame rate as the connection allows. Requests are pipelined
   and paced by a token bucket, so the stream never exceeds the frame rate or the cap. Colour-depth
   changes open a second stream and switch over only once it works, so a server that rejects a depth
   can't drop the session.
@@ -60,19 +60,20 @@ not `-once`), because a colour-depth change briefly opens one.
    screen and UAC prompts can be controlled too. In its settings, set a VNC password, enable
    **Allow loopback connections** and **Loopback connections only**, so port 5900 is reachable only through SSH.
 3. Connect from PixelRemote with `user@pc-name`. Keyboard mapping *Automatic* swaps Ctrl and ⌘ when you
-   connect from a Mac. TightVNC speaks Tight with JPEG, so the quality presets take full effect; it
-   can't change the Windows screen resolution, so pick resolutions on the Windows side.
+   connect from a Mac. TightVNC speaks Tight with JPEG, so the quality setting takes full effect.
 
 ## How bandwidth is controlled
 
 | Setting | What it does | Works on |
 |---|---|---|
-| Image quality | Sends the Tight JPEG quality level (Low = 1 … High = 8; Lossless disables JPEG) and zlib effort. The server uses JPEG for photo-like areas; text and UI stay lossless. | Tight/JPEG servers: TigerVNC, TurboVNC, x11vnc, TightVNC, UltraVNC. **No effect** on servers without Tight/JPEG; the stats panel shows the encoding in use and the settings panel warns when it is lossless (ZRLE/Raw). |
+| Image quality | Requests JPEG at quality 10 (Low), 50 (Balanced) or 85 (High) with 4:2:0 chroma subsampling below 70, or no JPEG (Lossless). **Auto** starts at 35 and, once a second, steps between 5 and 90: down while the link is saturated and the frame rate misses its target, up after a few seconds of headroom. The server uses JPEG for photo-like areas; text and UI stay lossless. | Tight/JPEG servers: TigerVNC, TurboVNC, x11vnc, TightVNC, UltraVNC. Fine-grained quality and subsampling need TigerVNC or TurboVNC; others get the nearest classic 0–9 level. **No effect** on servers without Tight/JPEG; the stats panel shows the encoding in use and the settings panel warns when it is lossless (ZRLE/Raw). |
 | Colour depth | 16-bit or 8-bit pixels: roughly ⅔ or ⅓ of the data for lossless encodings | Every server that accepts the format; if it refuses, the session stays on the previous depth |
-| Resolution | Asks the server to resize its desktop | Servers with ExtendedDesktopSize, e.g. TigerVNC's virtual desktops (`vncserver`/Xvnc) |
 | Frame rate / bandwidth limit | Delays frame requests on the client side | Every server |
 
-The stats panel shows the encoding actually in use, and the connection log has a per-encoding traffic breakdown.
+JPEG rectangles in an update are decoded in parallel by the engine's native codec, so a full-screen
+update (TigerVNC sends it as ~30 tiles) isn't limited by one-at-a-time decoding. The stats panel
+shows the encoding actually in use; the connection log has a per-encoding traffic breakdown and
+records every Auto quality change with the reason.
 
 ## Architecture
 

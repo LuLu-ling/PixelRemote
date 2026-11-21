@@ -554,30 +554,6 @@ abstract class AppLocalizations {
   /// **'{value} fps'**
   String fps(int value);
 
-  /// No description provided for @resolution.
-  ///
-  /// In en, this message translates to:
-  /// **'Resolution'**
-  String get resolution;
-
-  /// No description provided for @resolutionNative.
-  ///
-  /// In en, this message translates to:
-  /// **'Server default'**
-  String get resolutionNative;
-
-  /// No description provided for @resolutionWindow.
-  ///
-  /// In en, this message translates to:
-  /// **'Match window'**
-  String get resolutionWindow;
-
-  /// No description provided for @resolutionUnsupported.
-  ///
-  /// In en, this message translates to:
-  /// **'This server can\'t change its resolution, so the image is scaled locally.'**
-  String get resolutionUnsupported;
-
   /// No description provided for @colorDepth.
   ///
   /// In en, this message translates to:
@@ -779,7 +755,7 @@ abstract class AppLocalizations {
   /// No description provided for @qualityNoEffect.
   ///
   /// In en, this message translates to:
-  /// **'This server is sending {encoding}, which is lossless, so image quality has no effect here. Lower the colour depth, resolution or frame rate to save bandwidth.'**
+  /// **'This server is sending {encoding}, which is lossless, so image quality has no effect here. Lower the colour depth or frame rate to save bandwidth.'**
   String qualityNoEffect(String encoding);
 
   /// No description provided for @depthRejected.
@@ -787,6 +763,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The server didn\'t accept {bits}-bit colour, so the session stayed on the previous depth. The connection log has the details.'**
   String depthRejected(int bits);
+
+  /// No description provided for @qualityAuto.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto'**
+  String get qualityAuto;
+
+  /// No description provided for @qualityAutoHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto lowers JPEG quality whenever the connection can’t keep up with the frame rate, and raises it again when there’s headroom.'**
+  String get qualityAutoHint;
+
+  /// No description provided for @qualityFixedHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Lower quality means smaller frames and a higher frame rate. Text and UI stay sharp; photos and video get blockier.'**
+  String get qualityFixedHint;
 }
 
 class _AppLocalizationsDelegate

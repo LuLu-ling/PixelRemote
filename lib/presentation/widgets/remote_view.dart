@@ -21,7 +21,6 @@ class RemoteView extends StatefulWidget {
     required this.isMac,
     required this.focusNode,
     required this.onCommand,
-    this.onViewportChanged,
     this.onPointerAt,
   });
 
@@ -31,8 +30,6 @@ class RemoteView extends StatefulWidget {
   final FocusNode focusNode;
   final ValueChanged<SessionCommand> onCommand;
 
-  /// Reports the view size in physical pixels (for "match window" resolution).
-  final ValueChanged<Size>? onViewportChanged;
   final ValueChanged<Offset>? onPointerAt;
 
   @override
@@ -51,7 +48,6 @@ class _RemoteViewState extends State<RemoteView> {
   Offset _hotspot = Offset.zero;
   bool _remoteCursor = false, _converting = false, _dirty = false;
   Rect _viewRect = Rect.zero;
-  Size? _reportedSize;
   int _buttons = 0;
   Offset _scroll = Offset.zero;
 
@@ -207,13 +203,6 @@ class _RemoteViewState extends State<RemoteView> {
     return Offset((box.width - size.width) / 2, (box.height - size.height) / 2) & size;
   }
 
-  void _reportViewport(Size logical) {
-    final physical = logical * MediaQuery.devicePixelRatioOf(context);
-    if (physical == _reportedSize || widget.onViewportChanged == null) return;
-    _reportedSize = physical;
-    WidgetsBinding.instance.addPostFrameCallback((_) => widget.onViewportChanged?.call(physical));
-  }
-
   @override
   Widget build(BuildContext context) {
     return Focus(
@@ -225,7 +214,6 @@ class _RemoteViewState extends State<RemoteView> {
           final size = constraints.biggest;
           final f = widget.desktop.frame;
           _viewRect = _fit(size, f.width, f.height);
-          _reportViewport(size);
           return MouseRegion(
             cursor: _remoteCursor ? SystemMouseCursors.none : SystemMouseCursors.basic,
             onExit: (_) => _pointer.value = null,

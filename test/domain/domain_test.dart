@@ -66,14 +66,15 @@ void main() {
         quality: ImageQuality.lossless,
         colorDepth: ColorDepth.high,
         frameRate: 144,
-        resolution: Resolution(2560, 1440),
         maxBandwidthMbps: 20,
       ),
     );
     final back = AppPreferences.fromJson(prefs.toJson());
     expect(back.toJson(), prefs.toJson());
     expect(back.stream, prefs.stream);
-    expect(Resolution.decode('window'), Resolution.matchWindow);
+    expect(StreamSettings.fromJson({'resolution': 'window', 'quality': 'balanced'}).quality, ImageQuality.balanced,
+        reason: 'settings saved by older versions still load');
+    expect(const StreamSettings().quality, ImageQuality.auto);
     expect(StreamSettings.fromJson({'frameRate': 7}).frameRate, 60, reason: 'unknown rates fall back');
   });
 }

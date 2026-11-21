@@ -10,6 +10,7 @@ import 'package:pixel_remote/data/rfb/decoders/rect_decoder.dart';
 import 'package:pixel_remote/data/rfb/frame_pacer.dart';
 import 'package:pixel_remote/data/rfb/rfb_handshake.dart';
 import 'package:pixel_remote/data/rfb/rfb_session.dart';
+import 'package:pixel_remote/data/rfb/tight_quality.dart';
 import 'package:pixel_remote/domain/entities/stream_settings.dart';
 import 'package:pixel_remote/domain/errors.dart';
 import 'package:pixel_remote/domain/services/remote_desktop.dart';
@@ -31,6 +32,21 @@ final class _Pipe implements ByteChannel {
   Future<void> close() async => _toClient.close();
 
   void send(List<int> bytes) => _toClient.add(Uint8List.fromList(bytes));
+}
+
+/// JPEG codec whose decodes finish only when the test says so.
+final class _ControlledJpeg implements JpegCodec {
+  final pending = <Completer<Uint32List>>[];
+
+  @override
+  Future<Uint32List> decode(Uint8List jpeg, int width, int height) => (Completer<Uint32List>()..also(pending.add)).future;
+}
+
+extension<T> on T {
+  T also(void Function(T) f) {
+    f(this);
+    return this;
+  }
 }
 
 final class _NoJpeg implements JpegCodec {
@@ -151,7 +167,7 @@ void main() {
     expect(pacer.nextDelay().inMicroseconds, 66666, reason: 'unlimited bandwidth');
   });
 
-  test('RFB session: auth, decoders, pipelining, resize, input, clipboard, log', () async {
+  test('RFB session: auth, decoders, pipelining, quality, input, clipboard, log', () async {
     final pipe = _Pipe();
     final log = ConnectionLog();
     final client = _ClientMessages(pipe.server);
@@ -164,7 +180,9 @@ void main() {
     final enc = ByteData.sublistView(await client.next());
     final advertised = [for (var i = 0; i < enc.getUint16(2); i++) enc.getInt32(4 + i * 4)];
     expect(advertised.take(4), [7, 16, 1, 0], reason: 'Tight, ZRLE, CopyRect, Raw');
-    expect(advertised, containsAll([-27, -250, -239, -308, -1063131698]));
+    // Auto quality starts at JPEG 35: level 3, fine quality 35, chroma 4:2:0, zlib 6.
+    expect(advertised, containsAll([-29, -512 + 35, -767, -250, -239, -223, -1063131698]));
+    expect(advertised, isNot(contains(-308)), reason: 'no client-driven resizing');
     expect((await client.request())[1], 0, reason: 'first request is non-incremental');
 
     // -- pipelining: the next request goes out while this update is still arriving
@@ -174,7 +192,7 @@ void main() {
       1 | 128, 5, // 6 × blue
     ]);
     final frame = session.frames.first;
-    pipe.send([0, 0, ..._u16(6)]);
+    pipe.send([0, 0, ..._u16(5)]);
     expect((await client.request())[1], 1, reason: 'incremental request sent ahead of the rectangles');
     pipe.send([
       ..._rect(0, 0, 2, 1, 0), 10, 20, 30, 0, 40, 50, 60, 0, // Raw
@@ -182,7 +200,6 @@ void main() {
       ..._rect(4, 0, 2, 1, 1), ..._u16(0), ..._u16(0), // CopyRect from (0,0)
       ..._rect(6, 0, 2, 2, 7), 0x40, 1, 1, 9, 9, 9, 7, 7, 7, 0x80, 0x40, // Tight palette, 2 colours
       ..._rect(0, 1, 4, 3, 16), ..._u32(zrle.length), ...zrle, // ZRLE
-      ..._rect(0, 0, 8, 4, -308), 1, 0, 0, 0, ..._u32(7), ..._u16(0), ..._u16(0), ..._u16(8), ..._u16(4), ..._u32(0),
     ]);
     await frame;
 
@@ -194,21 +211,18 @@ void main() {
     expect(at(4, 0), _rgb(10, 20, 30), reason: 'CopyRect');
     expect((at(6, 0), at(7, 0), at(6, 1), at(7, 1)), (_rgb(7, 7, 7), _rgb(9, 9, 9), _rgb(9, 9, 9), _rgb(7, 7, 7)));
     expect((at(0, 1), at(1, 2), at(2, 2), at(3, 3)), (_rgb(255, 0, 0), _rgb(255, 0, 0), _rgb(0, 0, 255), _rgb(0, 0, 255)));
-    expect(session.canResize, isTrue);
     expect(session.takeEncodingStats().keys, containsAll(['Raw', 'Tight', 'CopyRect', 'ZRLE']));
     expect(session.takeEncodingStats(), isEmpty, reason: 'stats reset after each read');
 
     // -- commands; a colour-depth change is ignored mid-stream (it needs a new connection)
     session
-      ..resize(1024, 768)
       ..applySettings(const StreamSettings(colorDepth: ColorDepth.high, quality: ImageQuality.low))
       ..sendKey(0x61, down: true)
       ..sendPointer(3, 2, 1);
-    // SetDesktopSize 1024×768, one screen keeping the server's screen id 7.
-    expect(await client.command(), [251, 0, 4, 0, 3, 0, 1, 0, 0, 0, 0, 7, 0, 0, 0, 0, 4, 0, 3, 0, 0, 0, 0, 0]);
     final reEnc = ByteData.sublistView(await client.command());
     expect(reEnc.getUint8(0), 2, reason: 'quality change re-sends SetEncodings, no SetPixelFormat');
-    expect([for (var i = 0; i < reEnc.getUint16(2); i++) reEnc.getInt32(4 + i * 4)], contains(-31), reason: 'JPEG 1');
+    // Low: JPEG 10 (level 1), chroma 4:2:0, zlib 9.
+    expect([for (var i = 0; i < reEnc.getUint16(2); i++) reEnc.getInt32(4 + i * 4)], containsAll([-31, -502, -767, -247]));
     expect(await client.command(), [4, 1, 0, 0, 0, 0, 0, 0x61]);
     expect(await client.command(), [5, 1, 0, 3, 0, 2]);
 
@@ -265,6 +279,70 @@ void main() {
     final px = session.frame.rgba.buffer.asUint32List();
     expect((px[0], px[1], px[4], px[7]), (_rgb(255, 0, 0), _rgb(0, 255, 0), _rgb(0, 0, 255), _rgb(0, 0, 255)));
     await session.close();
+  });
+
+  test('JPEG rectangles decode in parallel but are drawn in order', () async {
+    final pipe = _Pipe();
+    final jpeg = _ControlledJpeg();
+    final opening = RfbProtocol(jpeg).open(pipe, const StreamSettings(), password: () async => null, log: ConnectionLog());
+    final client = _ClientMessages(pipe.server);
+    pipe.send([...ascii.encode('RFB 003.008\n'), 1, 1]);
+    await pipe.server.read(13); // version + chosen security type
+    pipe.send([..._u32(0)]);
+    await pipe.server.u8();
+    pipe.send([..._u16(4), ..._u16(1), ...List.filled(16, 0), ..._u32(0)]);
+    final session = await opening;
+    await client.next(); // SetPixelFormat
+    await client.next(); // SetEncodings
+    await client.request();
+
+    var framed = false;
+    unawaited(session.frames.first.then((_) => framed = true));
+    pipe.send([
+      0, 0, ..._u16(3),
+      ..._rect(0, 0, 1, 1, 7), 0x90, 1, 0xA, // JPEG #1 (1 byte "image")
+      ..._rect(1, 0, 1, 1, 7), 0x90, 1, 0xB, // JPEG #2
+      ..._rect(2, 0, 2, 1, 1), ..._u16(0), ..._u16(0), // CopyRect from (0,0): must see JPEG #1's pixels
+    ]);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    expect(jpeg.pending, hasLength(2), reason: 'both decodes started before either finished');
+    expect(framed, isFalse);
+    jpeg.pending[1].complete(Uint32List.fromList([_rgb(0, 0, 9)])); // finishes out of order
+    jpeg.pending[0].complete(Uint32List.fromList([_rgb(9, 0, 0)]));
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    final px = session.frame.rgba.buffer.asUint32List();
+    expect(px, [_rgb(9, 0, 0), _rgb(0, 0, 9), _rgb(9, 0, 0), _rgb(0, 0, 9)]);
+    expect(framed, isTrue);
+    await session.close();
+  });
+
+  group('QualityGovernor', () {
+    test('drops quality while the link is saturated and frames fall short', () {
+      final g = QualityGovernor();
+      expect(g.quality, 35);
+      expect(g.sample(fps: 40, targetFps: 60, busy: 0.95, jpegShare: 0.8), isTrue);
+      expect(g.quality, 25);
+      expect(g.sample(fps: 20, targetFps: 60, busy: 0.95, jpegShare: 0.8), isFalse, reason: 'cooldown');
+      expect(g.sample(fps: 20, targetFps: 60, busy: 0.95, jpegShare: 0.8), isTrue);
+      expect(g.quality, 10, reason: 'far below target: two steps');
+    });
+
+    test('leaves quality alone when the screen is idle or quality would not help', () {
+      final g = QualityGovernor();
+      expect(g.sample(fps: 2, targetFps: 60, busy: 0.05, jpegShare: 0.9), isFalse, reason: 'idle, not congested');
+      expect(g.sample(fps: 20, targetFps: 60, busy: 0.95, jpegShare: 0.02), isFalse, reason: 'almost no JPEG');
+      expect(g.quality, 35);
+    });
+
+    test('raises quality after sustained headroom, up to the ceiling', () {
+      final g = QualityGovernor();
+      var changes = 0;
+      for (var i = 0; i < 60; i++) {
+        if (g.sample(fps: 60, targetFps: 60, busy: 0.2, jpegShare: 0.5)) changes++;
+      }
+      expect(g.quality, QualityGovernor.steps.last);
+      expect(changes, QualityGovernor.steps.length - 1 - QualityGovernor.initialStep);
+    });
   });
 
   test('handshake reports unsupported security types', () async {

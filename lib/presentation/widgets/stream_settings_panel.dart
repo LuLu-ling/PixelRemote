@@ -9,7 +9,7 @@ import '../l10n.dart';
 import '../theme/app_theme.dart';
 import 'common.dart';
 
-/// Quality, frame rate, resolution, colour depth, bandwidth and key mapping.
+/// Quality, frame rate, colour depth, bandwidth and key mapping.
 /// Edits preferences; a live session follows them immediately.
 class StreamSettingsPanel extends ConsumerWidget {
   const StreamSettingsPanel({super.key, required this.title, required this.onClose});
@@ -49,14 +49,20 @@ class StreamSettingsPanel extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 SectionLabel(l10n.quality),
-                SegmentedButton<ImageQuality>(
-                  showSelectedIcon: false,
-                  segments: [
-                    for (final q in ImageQuality.values) ButtonSegment(value: q, label: Text(l10n.qualityName(q))),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final q in ImageQuality.values)
+                      ChoiceChip(
+                        label: Text(l10n.qualityName(q)),
+                        selected: s.quality == q,
+                        onSelected: (_) => set(s.copyWith(quality: q)),
+                      ),
                   ],
-                  selected: {s.quality},
-                  onSelectionChanged: (v) => set(s.copyWith(quality: v.first)),
                 ),
+                const SizedBox(height: 8),
+                Text(s.quality == ImageQuality.auto ? l10n.qualityAutoHint : l10n.qualityFixedHint, style: hint),
                 if (ref.watch(sessionStatsProvider).value?.encoding case final enc? when enc == 'ZRLE' || enc == 'Raw') ...[
                   const SizedBox(height: 8),
                   Text(l10n.qualityNoEffect(enc), style: hint),
@@ -75,18 +81,6 @@ class StreamSettingsPanel extends ConsumerWidget {
                       ),
                   ],
                 ),
-                gap,
-                SectionLabel(l10n.resolution),
-                Select<Resolution>(
-                  value: s.resolution,
-                  items: Resolution.presets,
-                  label: l10n.resolutionName,
-                  onChanged: (r) => set(s.copyWith(resolution: r)),
-                ),
-                if (session is SessionActive && !session.session.desktop.canResize && !s.resolution.isNative) ...[
-                  const SizedBox(height: 8),
-                  Text(l10n.resolutionUnsupported, style: hint),
-                ],
                 gap,
                 SectionLabel(l10n.colorDepth),
                 SegmentedButton<ColorDepth>(

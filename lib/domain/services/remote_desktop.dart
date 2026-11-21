@@ -34,9 +34,6 @@ abstract interface class RemoteDesktopSession {
   Stream<RemoteCursor> get cursors;
   Stream<String> get clipboard;
 
-  /// Whether the server accepts resolution changes from the client.
-  bool get canResize;
-
   /// Completes when the session ends: `null` if closed locally, otherwise why.
   Future<RemoteException?> get closed;
 
@@ -47,7 +44,6 @@ abstract interface class RemoteDesktopSession {
   /// Applies everything that can change mid-stream. The colour depth is
   /// negotiated when a connection opens and is ignored here.
   void applySettings(StreamSettings settings);
-  void resize(int width, int height);
   void refresh();
 
   /// Bytes received per encoding (e.g. "Tight JPEG", "ZRLE") since the last call.

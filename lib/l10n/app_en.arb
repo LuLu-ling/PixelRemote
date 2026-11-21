@@ -153,10 +153,6 @@
       }
     }
   },
-  "resolution": "Resolution",
-  "resolutionNative": "Server default",
-  "resolutionWindow": "Match window",
-  "resolutionUnsupported": "This server can't change its resolution, so the image is scaled locally.",
   "colorDepth": "Color depth",
   "depthFull": "Full color",
   "depthHigh": "16-bit",
@@ -210,7 +206,7 @@
   "viewLog": "View connection log",
   "logEmpty": "Nothing logged yet.",
   "statsEncoding": "Encoding",
-  "qualityNoEffect": "This server is sending {encoding}, which is lossless, so image quality has no effect here. Lower the colour depth, resolution or frame rate to save bandwidth.",
+  "qualityNoEffect": "This server is sending {encoding}, which is lossless, so image quality has no effect here. Lower the colour depth or frame rate to save bandwidth.",
   "@qualityNoEffect": {
     "placeholders": {
       "encoding": {
@@ -225,5 +221,8 @@
         "type": "int"
       }
     }
-  }
+  },
+  "qualityAuto": "Auto",
+  "qualityAutoHint": "Auto lowers JPEG quality whenever the connection can’t keep up with the frame rate, and raises it again when there’s headroom.",
+  "qualityFixedHint": "Lower quality means smaller frames and a higher frame rate. Text and UI stay sharp; photos and video get blockier."
 }

@@ -153,10 +153,6 @@
       }
     }
   },
-  "resolution": "分辨率",
-  "resolutionNative": "服务器默认",
-  "resolutionWindow": "匹配窗口",
-  "resolutionUnsupported": "该服务器不支持调整分辨率，画面将在本地缩放。",
   "colorDepth": "色深",
   "depthFull": "全彩",
   "depthHigh": "16 位",
@@ -210,7 +206,7 @@
   "viewLog": "查看连接日志",
   "logEmpty": "暂无日志。",
   "statsEncoding": "编码",
-  "qualityNoEffect": "该服务器使用 {encoding}（无损）传输，画质设置在这里不起作用。可降低色深、分辨率或帧率来节省带宽。",
+  "qualityNoEffect": "该服务器使用 {encoding}（无损）传输，画质设置在这里不起作用。可降低色深或帧率来节省带宽。",
   "@qualityNoEffect": {
     "placeholders": {
       "encoding": {
@@ -225,5 +221,8 @@
         "type": "int"
       }
     }
-  }
+  },
+  "qualityAuto": "自动",
+  "qualityAutoHint": "自动模式会在网络跟不上目标帧率时降低 JPEG 画质，带宽有余时再提升画质。",
+  "qualityFixedHint": "画质越低，每帧越小、帧率越高。文字和界面保持清晰，图片和视频会出现色块。"
 }

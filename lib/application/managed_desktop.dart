@@ -37,7 +37,6 @@ final class ManagedDesktop implements RemoteDesktopSession {
   RemoteDesktopSession _current;
   StreamSettings _settings;
   ColorDepth _depth; // what the live connection actually uses
-  (int, int)? _lastResize;
   int _generation = 0, _switches = 0;
   RemoteDesktopSession? _dropped; // a live stream that closed while a switch was running
   RemoteException? _dropReason;
@@ -60,9 +59,6 @@ final class ManagedDesktop implements RemoteDesktopSession {
   Stream<String> get clipboard => _clipboard.stream;
 
   @override
-  bool get canResize => _current.canResize;
-
-  @override
   Future<RemoteException?> get closed => _closed.future;
 
   @override
@@ -79,12 +75,6 @@ final class ManagedDesktop implements RemoteDesktopSession {
 
   @override
   Map<String, int> takeEncodingStats() => _current.takeEncodingStats();
-
-  @override
-  void resize(int width, int height) {
-    _lastResize = (width, height);
-    _current.resize(width, height);
-  }
 
   @override
   void applySettings(StreamSettings settings) {
@@ -124,7 +114,6 @@ final class ManagedDesktop implements RemoteDesktopSession {
       _depth = target;
       _attach(fresh);
       fresh.applySettings(_settings.copyWith(colorDepth: target));
-      if (_lastResize case (final w, final h)) fresh.resize(w, h);
       _log.info(_src, 'Now streaming in ${target.bits}-bit colour');
       if (!_frames.isClosed) _frames.add(null); // show the new framebuffer right away
       await old.close();

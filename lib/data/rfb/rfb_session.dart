@@ -18,6 +18,7 @@ import 'framebuffer.dart';
 import 'pixel_format.dart';
 import 'rfb_handshake.dart';
 import 'rfb_wire.dart';
+import 'tight_quality.dart';
 
 /// [RemoteDesktopProtocol] implementation for RFB / VNC.
 final class RfbProtocol implements RemoteDesktopProtocol {
@@ -50,14 +51,16 @@ final class RfbProtocol implements RemoteDesktopProtocol {
 /// Requests are pipelined like TigerVNC's viewer: the next request goes out as
 /// soon as an update starts arriving, so the server encodes frame N+1 while
 /// frame N is still in flight. [FramePacer] delays requests to honour the
-/// frame-rate and bandwidth limits.
+/// frame-rate and bandwidth limits, and in auto quality a [QualityGovernor]
+/// trades JPEG quality for frame rate once a second.
 final class RfbSession implements RemoteDesktopSession {
   RfbSession(this._channel, this._input, ServerInit init, StreamSettings settings, JpegCodec jpeg, this._log)
       : name = init.name,
         _settings = settings,
         _format = PixelFormat.of(settings.colorDepth),
         _fb = Framebuffer(init.width, init.height),
-        _nativeSize = (init.width, init.height),
+        _tight = TightQuality.preset(settings.quality),
+        _governor = settings.quality == ImageQuality.auto ? QualityGovernor() : null,
         _pacer = FramePacer(fps: settings.frameRate, maxMbps: settings.maxBandwidthMbps),
         _decoders = {
           Encoding.raw: RawDecoder(),
@@ -72,7 +75,6 @@ final class RfbSession implements RemoteDesktopSession {
   final ByteReader _input;
   final SessionLog _log;
   final Framebuffer _fb;
-  final (int, int) _nativeSize;
   final PixelFormat _format;
   final FramePacer _pacer;
   final Map<int, RectDecoder> _decoders;
@@ -82,15 +84,15 @@ final class RfbSession implements RemoteDesktopSession {
   final _clipboard = StreamController<String>.broadcast();
   final _closed = Completer<RemoteException?>();
   final _usage = <String, int>{};
-  final _window = _WindowStats();
+  final _window = _WindowStats(), _autoWindow = _WindowStats();
+  final _autoClock = Stopwatch()..start();
   final _seen = <String>{};
 
   StreamSettings _settings;
-  List<RfbScreen> _screens = const [];
-  (int, int)? _wantedSize;
-  bool _canResize = false, _fullRefresh = true, _requestScheduled = false, _legacyClipboardLogged = false;
-  int _updates = 0;
-  Timer? _requestTimer, _summaryTimer;
+  TightQuality _tight;
+  QualityGovernor? _governor;
+  bool _fullRefresh = true, _requestScheduled = false, _legacyClipboardLogged = false;
+  Timer? _requestTimer, _summaryTimer, _autoTimer;
 
   @override
   String name;
@@ -108,20 +110,18 @@ final class RfbSession implements RemoteDesktopSession {
   Stream<String> get clipboard => _clipboard.stream;
 
   @override
-  bool get canResize => _canResize;
-
-  @override
   Future<RemoteException?> get closed => _closed.future;
 
   void start() {
     final encodings = _encodings();
     _log.info(_src, 'Requesting pixel format ${_format.describe()}');
     _log.info(_src, 'Encodings offered: ${encodings.map(Encoding.name).join(', ')}');
+    _log.info(_src, 'Quality ${_settings.quality.name}: ${_tight.describe()}');
     _send(ClientMessage.setPixelFormat(_format));
     _send(ClientMessage.setEncodings(encodings));
-    _applyResolution();
     _sendRequest();
     _summaryTimer = Timer.periodic(_summaryEvery, (_) => _logSummary());
+    _autoTimer = Timer.periodic(const Duration(seconds: 1), (_) => _governQuality());
     unawaited(_readLoop());
   }
 
@@ -149,17 +149,9 @@ final class RfbSession implements RemoteDesktopSession {
       _log.info(_src, 'Pacing: up to ${settings.frameRate} fps, bandwidth $cap');
     }
     if (settings.quality != old.quality) {
-      final q = settings.quality;
-      _log.info(_src, 'Quality ${old.quality.name} → ${q.name}: JPEG ${q.jpeg ?? 'off (lossless)'}, zlib level ${q.compression}');
-      _send(ClientMessage.setEncodings(_encodings()));
+      _governor = settings.quality == ImageQuality.auto ? QualityGovernor() : null;
+      _setQuality(TightQuality.preset(settings.quality), 'quality ${old.quality.name} → ${settings.quality.name}');
     }
-    if (settings.resolution != old.resolution) _applyResolution();
-  }
-
-  @override
-  void resize(int width, int height) {
-    _wantedSize = (width.clamp(16, 8192), height.clamp(16, 8192));
-    _requestWantedSize();
   }
 
   @override
@@ -210,31 +202,41 @@ final class RfbSession implements RemoteDesktopSession {
     final head = await _input.read(3);
     _scheduleRequest(); // pipelining: let the server prepare the next frame now
     final count = (head[1] << 8) | head[2];
+    // JPEG rectangles decode in parallel; their pixels are drawn in order before
+    // anything that reads or reshapes the framebuffer, and at the end.
+    final deferred = <Future<void Function()>>[];
+    Future<void> drawDeferred() async {
+      for (final draw in deferred) {
+        (await draw)();
+      }
+      deferred.clear();
+    }
+
     for (var i = 0; i < count; i++) {
       final h = ByteData.sublistView(await _input.read(12));
       final encoding = h.getInt32(8);
       if (encoding == Encoding.lastRect) break;
+      if (encoding == Encoding.copyRect || encoding == Encoding.desktopSize) await drawDeferred();
       final before = _input.consumed;
-      final label = await _readRect((x: h.getUint16(0), y: h.getUint16(2), w: h.getUint16(4), h: h.getUint16(6)), encoding);
-      if (label != null) _account(label, _input.consumed - before);
+      final decoded = await _readRect((x: h.getUint16(0), y: h.getUint16(2), w: h.getUint16(4), h: h.getUint16(6)), encoding);
+      if (decoded == null) continue;
+      if (decoded.draw case final draw?) deferred.add(draw..ignore());
+      _account(decoded.label, _input.consumed - before);
     }
+    await drawDeferred();
     final bytes = _input.consumed - start;
     _pacer.onReceived(bytes);
     _window.addUpdate(bytes, watch.elapsedMicroseconds);
-    if (++_updates == 1 && !_canResize) {
-      _log.info(_src, 'Server does not support ExtendedDesktopSize: resolution changes are scaled locally');
-    }
+    _autoWindow.addUpdate(bytes, watch.elapsedMicroseconds);
     if (!_frames.isClosed) _frames.add(null);
   }
 
-  /// Decodes one rectangle; returns its statistics label (null for pseudo-encodings).
-  Future<String?> _readRect(RfbRect r, int encoding) async {
+  /// Decodes one rectangle; returns null for pseudo-encodings.
+  Future<Decoded?> _readRect(RfbRect r, int encoding) async {
     switch (encoding) {
       case Encoding.desktopSize:
         _log.info(_src, 'Server resized the desktop to ${r.w}×${r.h}');
         _resizeFramebuffer(r.w, r.h);
-      case Encoding.extendedDesktopSize:
-        await _readExtendedDesktopSize(r);
       case Encoding.cursor:
         final cursor = await readCursor(_input, r, _format);
         if (!_cursors.isClosed) _cursors.add(cursor);
@@ -252,32 +254,6 @@ final class RfbSession implements RemoteDesktopSession {
         return decoder.decode(_input, r, _fb, _format);
     }
     return null;
-  }
-
-  /// x = reason (0 server, 1 this client, 2 another client), y = status.
-  Future<void> _readExtendedDesktopSize(RfbRect r) async {
-    final count = (await _input.read(4))[0];
-    final b = ByteData.sublistView(await _input.read(count * 16));
-    _screens = [
-      for (var o = 0; o < count * 16; o += 16)
-        RfbScreen(b.getUint32(o), b.getUint16(o + 4), b.getUint16(o + 6), b.getUint16(o + 8), b.getUint16(o + 10),
-            b.getUint32(o + 12)),
-    ];
-    if (!_canResize) {
-      _canResize = true;
-      _log.info(_src, 'Server supports remote resizing (ExtendedDesktopSize), ${_screens.length} screen(s)');
-    }
-    const reasons = ['server', 'this viewer', 'another viewer'];
-    const failures = ['', 'prohibited', 'out of resources', 'invalid screen layout'];
-    if (r.x == 1 && r.y != 0) {
-      _log.warn(_src, 'Server refused the resize: ${r.y < failures.length ? failures[r.y] : 'error ${r.y}'}');
-    } else {
-      if (r.w != _fb.width || r.h != _fb.height) {
-        _log.info(_src, 'Desktop is now ${r.w}×${r.h} (changed by ${r.x < reasons.length ? reasons[r.x] : 'unknown'})');
-      }
-      _resizeFramebuffer(r.w, r.h);
-    }
-    _requestWantedSize();
   }
 
   Future<void> _readCutText() async {
@@ -307,6 +283,7 @@ final class RfbSession implements RemoteDesktopSession {
   void _account(String label, int bytes) {
     _usage[label] = (_usage[label] ?? 0) + bytes;
     _window.addRect(label, bytes);
+    _autoWindow.addRect(label, bytes);
     if (_seen.add(label)) {
       final lossless = label == 'ZRLE' || label == 'Raw';
       _log.info(_src, 'Server started sending $label${lossless ? ' (lossless, so JPEG quality settings do not apply)' : ''}');
@@ -326,6 +303,31 @@ final class RfbSession implements RemoteDesktopSession {
     w.reset();
   }
 
+  /// Auto quality: one governor decision per second.
+  void _governQuality() {
+    final governor = _governor, w = _autoWindow;
+    final seconds = _autoClock.elapsedMicroseconds / 1e6;
+    _autoClock.reset();
+    if (governor != null && seconds > 0) {
+      final fps = w.updates / seconds;
+      final busy = (w.micros + w.throttledMicros) / (seconds * 1e6);
+      final jpegShare = w.bytes == 0 ? 0.0 : (w.byLabel['Tight JPEG']?.$2 ?? 0) / w.bytes;
+      if (governor.sample(fps: fps, targetFps: _settings.frameRate, busy: busy, jpegShare: jpegShare)) {
+        _setQuality(
+          TightQuality.jpeg(governor.quality),
+          'auto: ${fps.toStringAsFixed(0)} of ${_settings.frameRate} fps, link busy ${(busy * 100).round()}%',
+        );
+      }
+    }
+    w.reset();
+  }
+
+  void _setQuality(TightQuality quality, String reason) {
+    _tight = quality;
+    _log.info(_src, '${quality.describe()} ($reason)');
+    _send(ClientMessage.setEncodings(_encodings()));
+  }
+
   static String _kb(int bytes) => bytes >= 1 << 20 ? '${(bytes / (1 << 20)).toStringAsFixed(1)} MB' : '${(bytes / 1024).toStringAsFixed(1)} KB';
 
   List<int> _encodings() => [
@@ -333,34 +335,13 @@ final class RfbSession implements RemoteDesktopSession {
         Encoding.zrle,
         Encoding.copyRect,
         Encoding.raw,
-        if (_settings.quality.jpeg case final q?) Encoding.jpegQuality(q),
-        Encoding.compressLevel(_settings.quality.compression),
+        ..._tight.pseudoEncodings,
         Encoding.cursor,
         Encoding.desktopSize,
-        Encoding.extendedDesktopSize,
         Encoding.lastRect,
         Encoding.desktopName,
         Encoding.extendedClipboard,
       ];
-
-  void _applyResolution() {
-    final r = _settings.resolution;
-    if (r.isFixed) resize(r.width, r.height);
-    if (r.isNative) {
-      _wantedSize = _nativeSize; // back to whatever the server started with
-      _requestWantedSize();
-    }
-    // matchWindow is driven by the view through resize().
-  }
-
-  /// Sends the remembered size once the server has said it supports resizing.
-  void _requestWantedSize() {
-    final wanted = _wantedSize;
-    if (wanted == null || !_canResize || (wanted.$1 == _fb.width && wanted.$2 == _fb.height)) return;
-    _log.info(_src, 'Requesting desktop size ${wanted.$1}×${wanted.$2}');
-    final base = _screens.isEmpty ? const RfbScreen(0, 0, 0, 0, 0, 0) : _screens.first;
-    _send(ClientMessage.setDesktopSize(wanted.$1, wanted.$2, [RfbScreen(base.id, 0, 0, wanted.$1, wanted.$2, base.flags)]));
-  }
 
   void _resizeFramebuffer(int w, int h) {
     if (w == _fb.width && h == _fb.height) return;
@@ -371,6 +352,7 @@ final class RfbSession implements RemoteDesktopSession {
   void _scheduleRequest() {
     if (_requestScheduled || _closed.isCompleted) return;
     final delay = _pacer.nextDelay();
+    _autoWindow.throttledMicros += _pacer.lastBandwidthWait.inMicroseconds;
     if (delay == Duration.zero) return _sendRequest();
     _requestScheduled = true;
     _requestTimer = Timer(delay, _sendRequest);
@@ -399,6 +381,7 @@ final class RfbSession implements RemoteDesktopSession {
     _closed.complete(reason);
     _requestTimer?.cancel();
     _summaryTimer?.cancel();
+    _autoTimer?.cancel();
     unawaited(_input.cancel());
     unawaited(_channel.close().catchError((Object _) {}));
     // Deferred: close() may be called from inside a (synchronous) frame event.
@@ -412,7 +395,7 @@ final class RfbSession implements RemoteDesktopSession {
 
 /// Rolling counters for the periodic log summary.
 final class _WindowStats {
-  int updates = 0, bytes = 0, micros = 0;
+  int updates = 0, bytes = 0, micros = 0, throttledMicros = 0;
   final byLabel = <String, (int, int)>{};
 
   void addUpdate(int size, int us) {
@@ -427,7 +410,7 @@ final class _WindowStats {
   }
 
   void reset() {
-    updates = bytes = micros = 0;
+    updates = bytes = micros = throttledMicros = 0;
     byLabel.clear();
   }
 }

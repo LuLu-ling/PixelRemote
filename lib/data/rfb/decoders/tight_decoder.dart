@@ -18,7 +18,7 @@ final class TightDecoder implements RectDecoder {
   static const _copy = 0, _palette = 1, _gradient = 2;
 
   @override
-  Future<String> decode(ByteReader input, RfbRect r, Framebuffer fb, PixelFormat pf) async {
+  Future<Decoded> decode(ByteReader input, RfbRect r, Framebuffer fb, PixelFormat pf) async {
     final control = await input.u8();
     for (var i = 0; i < 4; i++) {
       if ((control & (1 << i)) != 0) _zlib[i].reset();
@@ -27,11 +27,11 @@ final class TightDecoder implements RectDecoder {
 
     if (kind == 8) {
       fb.fill(r, pf.read(await input.read(tp), 0, tp));
-      return 'Tight';
+      return const Decoded('Tight');
     }
     if (kind == 9) {
-      fb.blit(r, await _jpeg.decode(await input.read(await _length(input)), r.w, r.h));
-      return 'Tight JPEG';
+      final pixels = _jpeg.decode(await input.read(await _length(input)), r.w, r.h);
+      return Decoded('Tight JPEG', pixels.then((px) => () => fb.blit(r, px)));
     }
     if (kind > 9) throw RemoteException(RemoteErrorKind.protocol, 'Tight compression $kind');
 
@@ -56,7 +56,7 @@ final class TightDecoder implements RectDecoder {
       _gradient => _ungradient(data, r.w, r.h, tp, pf),
       _ => pf.words(data, 0, r.w * r.h, tp),
     });
-    return 'Tight';
+    return const Decoded('Tight');
   }
 
   static Future<int> _length(ByteReader input) async {

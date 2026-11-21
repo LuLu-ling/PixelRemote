@@ -44,6 +44,7 @@ extension DomainText on AppLocalizations {
       };
 
   String qualityName(ImageQuality q) => switch (q) {
+        ImageQuality.auto => qualityAuto,
         ImageQuality.low => qualityLow,
         ImageQuality.balanced => qualityBalanced,
         ImageQuality.high => qualityHigh,
@@ -62,8 +63,6 @@ extension DomainText on AppLocalizations {
         KeyMappingMode.ctrlCmd => mappingCtrlCmd,
         KeyMappingMode.altCmd => mappingAltCmd,
       };
-
-  String resolutionName(Resolution r) => r.isNative ? resolutionNative : (r.isMatchWindow ? resolutionWindow : '$r');
 
   String bandwidthLimit(int mbps) => mbps == 0 ? unlimited : this.mbps(mbps);
 

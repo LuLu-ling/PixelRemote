@@ -15,7 +15,6 @@ final class _Desktop implements RemoteDesktopSession, FrameView {
   final _frames = StreamController<void>.broadcast(sync: true);
   final _closed = Completer<RemoteException?>();
   final applied = <StreamSettings>[];
-  (int, int)? resized;
   bool closedByViewer = false;
 
   void emitFrame() => _frames.add(null);
@@ -38,8 +37,6 @@ final class _Desktop implements RemoteDesktopSession, FrameView {
   @override
   Stream<String> get clipboard => const Stream.empty();
   @override
-  bool get canResize => true;
-  @override
   Future<RemoteException?> get closed => _closed.future;
   @override
   void sendKey(int keysym, {required bool down}) {}
@@ -49,8 +46,6 @@ final class _Desktop implements RemoteDesktopSession, FrameView {
   void sendClipboard(String text) {}
   @override
   void applySettings(StreamSettings settings) => applied.add(settings);
-  @override
-  void resize(int width, int height) => resized = (width, height);
   @override
   void refresh() {}
   @override
@@ -78,7 +73,6 @@ void main() {
   });
 
   test('switches colour depth make-before-break', () async {
-    desktop.resize(1280, 720);
     desktop.applySettings(const StreamSettings(colorDepth: ColorDepth.low));
     await settle();
     expect(opened.map((d) => d.depth), [ColorDepth.full, ColorDepth.low]);
@@ -90,7 +84,6 @@ void main() {
     await settle();
     expect(desktop.name, 'fake 8');
     expect(opened[0].closedByViewer, isTrue);
-    expect(opened[1].resized, (1280, 720), reason: 'window-matched size is replayed');
     expect(opened[0].applied.last.colorDepth, ColorDepth.full, reason: 'a live stream never sees a depth change');
   });
 

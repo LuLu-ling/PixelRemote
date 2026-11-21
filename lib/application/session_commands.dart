@@ -80,15 +80,6 @@ final class ApplySettingsCommand implements SessionCommand {
   void execute(RemoteDesktopSession s) => s.applySettings(settings);
 }
 
-final class ResizeCommand implements SessionCommand {
-  const ResizeCommand(this.width, this.height);
-
-  final int width, height;
-
-  @override
-  void execute(RemoteDesktopSession s) => s.resize(width, height);
-}
-
 final class RefreshCommand implements SessionCommand {
   const RefreshCommand();
 

@@ -131,8 +131,6 @@ final class _Desktop implements RemoteDesktopSession, FrameView {
   @override
   Map<String, int> takeEncodingStats() => const {};
   @override
-  bool get canResize => true;
-  @override
   Future<RemoteException?> get closed => Completer<RemoteException?>().future;
   @override
   void sendKey(int keysym, {required bool down}) {}
@@ -142,8 +140,6 @@ final class _Desktop implements RemoteDesktopSession, FrameView {
   void sendClipboard(String text) {}
   @override
   void applySettings(StreamSettings settings) {}
-  @override
-  void resize(int width, int height) {}
   @override
   void refresh() {}
   @override
@@ -332,6 +328,17 @@ void main() {
       session: SessionActive(_activeSession()),
       withStats: true,
       encoding: 'ZRLE',
+      act: (t) => t.tap(find.byIcon(Icons.tune_rounded)),
+    ),
+    skip: skip,
+  );
+  testWidgets(
+    'session settings panel, English',
+    (t) => _shoot(
+      t,
+      'session_settings_en_light',
+      prefs: en,
+      session: SessionActive(_activeSession()),
       act: (t) => t.tap(find.byIcon(Icons.tune_rounded)),
     ),
     skip: skip,

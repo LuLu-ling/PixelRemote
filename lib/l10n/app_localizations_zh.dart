@@ -268,18 +268,6 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get resolution => '分辨率';
-
-  @override
-  String get resolutionNative => '服务器默认';
-
-  @override
-  String get resolutionWindow => '匹配窗口';
-
-  @override
-  String get resolutionUnsupported => '该服务器不支持调整分辨率，画面将在本地缩放。';
-
-  @override
   String get colorDepth => '色深';
 
   @override
@@ -384,11 +372,20 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String qualityNoEffect(String encoding) {
-    return '该服务器使用 $encoding（无损）传输，画质设置在这里不起作用。可降低色深、分辨率或帧率来节省带宽。';
+    return '该服务器使用 $encoding（无损）传输，画质设置在这里不起作用。可降低色深或帧率来节省带宽。';
   }
 
   @override
   String depthRejected(int bits) {
     return '服务器不接受 $bits 位色深，会话已保持原色深。详情见连接日志。';
   }
+
+  @override
+  String get qualityAuto => '自动';
+
+  @override
+  String get qualityAutoHint => '自动模式会在网络跟不上目标帧率时降低 JPEG 画质，带宽有余时再提升画质。';
+
+  @override
+  String get qualityFixedHint => '画质越低，每帧越小、帧率越高。文字和界面保持清晰，图片和视频会出现色块。';
 }
