@@ -12,6 +12,7 @@ import '../../domain/entities/stream_settings.dart';
 import '../../domain/services/platform_services.dart';
 import '../l10n.dart';
 import '../widgets/common.dart';
+import '../widgets/connection_log_panel.dart';
 import '../widgets/remote_view.dart';
 import '../widgets/session_toolbar.dart';
 import '../widgets/stats_overlay.dart';
@@ -28,12 +29,16 @@ class SessionPage extends ConsumerStatefulWidget {
   ConsumerState<SessionPage> createState() => _SessionPageState();
 }
 
+enum _Panel { none, settings, log }
+
 class _SessionPageState extends ConsumerState<SessionPage> {
   final _viewFocus = FocusNode(debugLabel: 'remote');
   late final AppLifecycleListener _lifecycle;
   late final StreamSubscription<String> _clipboardSub;
+  late final StreamSubscription<Object?> _rejectionSub;
   Timer? _hideTimer, _resizeTimer;
-  bool _toolbarVisible = true, _toolbarHovered = false, _settingsOpen = false, _fullScreen = false;
+  bool _toolbarVisible = true, _toolbarHovered = false, _fullScreen = false;
+  _Panel _panel = _Panel.none;
   String? _lastClipboard;
   Size? _viewport;
 
@@ -53,6 +58,10 @@ class _SessionPageState extends ConsumerState<SessionPage> {
       _lastClipboard = text;
       Clipboard.setData(ClipboardData(text: text));
     });
+    _rejectionSub = _session.rejections.listen((r) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.depthRejected(r.rejected.bits))));
+    });
     _lifecycle = AppLifecycleListener(onResume: _pushClipboard);
     _viewFocus.addListener(() => _viewFocus.hasFocus ? _pushClipboard() : null);
     _scheduleHide(const Duration(seconds: 3));
@@ -64,6 +73,7 @@ class _SessionPageState extends ConsumerState<SessionPage> {
       ..title = 'PixelRemote'
       ..isFullScreen = false;
     _clipboardSub.cancel();
+    _rejectionSub.cancel();
     _lifecycle.dispose();
     _hideTimer?.cancel();
     _resizeTimer?.cancel();
@@ -88,7 +98,7 @@ class _SessionPageState extends ConsumerState<SessionPage> {
   void _scheduleHide([Duration after = const Duration(milliseconds: 1500)]) {
     _hideTimer?.cancel();
     _hideTimer = Timer(after, () {
-      if (mounted && !_toolbarHovered && !_settingsOpen) setState(() => _toolbarVisible = false);
+      if (mounted && !_toolbarHovered && _panel == _Panel.none) setState(() => _toolbarVisible = false);
     });
   }
 
@@ -113,9 +123,9 @@ class _SessionPageState extends ConsumerState<SessionPage> {
     );
   }
 
-  void _toggleSettings() {
-    setState(() => _settingsOpen = !_settingsOpen);
-    if (!_settingsOpen) {
+  void _toggle(_Panel panel) {
+    setState(() => _panel = _panel == panel ? _Panel.none : panel);
+    if (_panel == _Panel.none) {
       _viewFocus.requestFocus();
       _scheduleHide();
     }
@@ -165,8 +175,10 @@ class _SessionPageState extends ConsumerState<SessionPage> {
                       title: _session.profile.displayName,
                       fullScreen: _fullScreen,
                       statsOn: prefs.showStats,
-                      settingsOpen: _settingsOpen,
-                      onToggleSettings: _toggleSettings,
+                      settingsOpen: _panel == _Panel.settings,
+                      logOpen: _panel == _Panel.log,
+                      onToggleSettings: () => _toggle(_Panel.settings),
+                      onToggleLog: () => _toggle(_Panel.log),
                       onToggleStats: () => update((p) => p.copyWith(showStats: !p.showStats)),
                       onToggleFullScreen: () {
                         _window.isFullScreen = !_fullScreen;
@@ -186,7 +198,7 @@ class _SessionPageState extends ConsumerState<SessionPage> {
               targetFps: prefs.stream.frameRate,
               onClose: () => update((p) => p.copyWith(showStats: false)),
             ),
-          if (_settingsOpen)
+          if (_panel == _Panel.settings)
             Positioned(
               top: 68,
               right: 16,
@@ -195,8 +207,21 @@ class _SessionPageState extends ConsumerState<SessionPage> {
                 alignment: Alignment.topRight,
                 child: Glass(
                   radius: 18,
-                  child: StreamSettingsPanel(title: context.l10n.streamSettings, onClose: _toggleSettings),
+                  child: StreamSettingsPanel(
+                    title: context.l10n.streamSettings,
+                    onClose: () => _toggle(_Panel.settings),
+                  ),
                 ),
+              ),
+            ),
+          if (_panel == _Panel.log)
+            Positioned(
+              top: 68,
+              right: 16,
+              bottom: 16,
+              child: Glass(
+                radius: 18,
+                child: ConnectionLogPanel(log: _session.log, onClose: () => _toggle(_Panel.log)),
               ),
             ),
         ],

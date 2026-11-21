@@ -23,6 +23,10 @@ final class PixelFormat {
 
   int get bytesPerPixel => bitsPerPixel >> 3;
 
+  String describe() => '$bitsPerPixel bpp, depth $depth (R${_bits(redMax)}G${_bits(greenMax)}B${_bits(blueMax)})';
+
+  static int _bits(int max) => max.bitLength;
+
   /// Size of a ZRLE CPIXEL / Tight TPIXEL: 24-bit colour travels as 3 bytes.
   int get compactSize => identical(this, rgbx) ? 3 : bytesPerPixel;
 

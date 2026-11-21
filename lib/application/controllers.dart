@@ -7,7 +7,10 @@ import '../domain/entities/app_preferences.dart';
 import '../domain/entities/connection_profile.dart';
 import '../domain/errors.dart';
 import '../domain/services/remote_desktop.dart';
+import '../domain/services/session_log.dart';
 import 'connect_session.dart';
+import 'connection_log.dart';
+import 'managed_desktop.dart';
 import 'providers.dart';
 import 'session_commands.dart';
 
@@ -15,31 +18,44 @@ import 'session_commands.dart';
 
 sealed class SessionState {
   const SessionState();
+
+  /// The log of the current or most recent connection, if any.
+  ConnectionLog? get log;
 }
 
 final class SessionIdle extends SessionState {
-  const SessionIdle([this.error]);
+  const SessionIdle([this.error, this.log]);
 
   /// Why the previous attempt or session ended, if it wasn't the user's doing.
   final RemoteException? error;
+
+  @override
+  final ConnectionLog? log;
 }
 
 final class SessionConnecting extends SessionState {
-  const SessionConnecting(this.profile, this.stage);
+  const SessionConnecting(this.profile, this.stage, this.log);
 
   final ConnectionProfile profile;
   final ConnectStage stage;
+
+  @override
+  final ConnectionLog log;
 }
 
 final class SessionActive extends SessionState {
   const SessionActive(this.session);
 
   final ActiveSession session;
+
+  @override
+  ConnectionLog get log => session.log;
 }
 
 class SessionController extends Notifier<SessionState> {
   ActiveSession? _active;
   CommandInvoker<RemoteDesktopSession>? _invoker;
+  StreamSubscription<DepthRejection>? _rejections;
   int _attempt = 0;
 
   @override
@@ -54,30 +70,41 @@ class SessionController extends Notifier<SessionState> {
     if (state is! SessionIdle) return;
     final attempt = ++_attempt;
     bool current() => attempt == _attempt;
-    state = SessionConnecting(profile, ConnectStage.resolving);
+    final log = ConnectionLog();
+    state = SessionConnecting(profile, ConnectStage.resolving, log);
     try {
       final session = await ref.read(connectSessionProvider).call(
             profile,
             ref.read(preferencesProvider).stream,
-            onStage: (stage) => current() ? state = SessionConnecting(profile, stage) : null,
+            log: log,
+            onStage: (stage) => current() ? state = SessionConnecting(profile, stage, log) : null,
           );
       if (!current()) return unawaited(session.close());
       _active = session;
-      _invoker = CommandInvoker(session.desktop);
+      _invoker = CommandInvoker(
+        session.desktop,
+        onError: (e, _) => log.error('command', 'Command failed: $e'),
+      );
+      // A depth the server refused snaps the preference back to what is running.
+      _rejections = session.rejections.listen((r) => ref
+          .read(preferencesProvider.notifier)
+          .update((p) => p.copyWith(stream: p.stream.copyWith(colorDepth: r.kept))));
       state = SessionActive(session);
       ref.read(profilesProvider.notifier).upsert(profile.touched(DateTime.now()));
       final reason = await session.ended;
       if (identical(_active, session)) await _end(reason ?? const RemoteException(RemoteErrorKind.disconnected));
     } on RemoteException catch (e) {
-      if (current()) state = SessionIdle(e);
+      if (current()) state = SessionIdle(e, log);
     }
   }
 
   /// Abandons an in-flight connection attempt.
   void cancel() {
-    if (state is! SessionConnecting) return;
+    final s = state;
+    if (s is! SessionConnecting) return;
     _attempt++;
-    state = const SessionIdle();
+    s.log.info('connect', 'Cancelled by the user');
+    state = SessionIdle(null, s.log);
   }
 
   Future<void> disconnect() => _end(null);
@@ -89,7 +116,8 @@ class SessionController extends Notifier<SessionState> {
     _active = null;
     _invoker = null;
     _attempt++;
-    state = SessionIdle(reason);
+    await _rejections?.cancel();
+    state = SessionIdle(reason, session?.log);
     await session?.close();
   }
 }

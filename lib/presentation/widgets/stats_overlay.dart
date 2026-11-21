@@ -87,6 +87,7 @@ class _StatsOverlayState extends ConsumerState<StatsOverlay> {
                     _row(l10n.statsUp, _rate(stats.txBitsPerSecond)),
                     _row(l10n.statsFrameRate, '${stats.fps.round()} / ${widget.targetFps}'),
                     _row(l10n.statsResolution, stats.width == 0 ? '—' : '${stats.width} × ${stats.height}'),
+                    _row(l10n.statsEncoding, stats.encoding ?? '—'),
                     const SizedBox(height: 10),
                     Padding(
                       padding: const EdgeInsets.only(right: 10),

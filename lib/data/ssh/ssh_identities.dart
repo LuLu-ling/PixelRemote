@@ -15,9 +15,11 @@ final class SshIdentities {
 
   final UserInteraction _interaction;
 
-  Future<List<SSHIdentity>> load({String? agentSocket, required List<String> files}) async => [
-        if (agentSocket != null) ...await _agentIdentities(agentSocket),
-        for (final path in files) ...await _fileIdentities(path),
+  Future<List<SSHIdentity>> fromAgent(String? socketPath) async =>
+      socketPath == null ? const [] : _agentIdentities(socketPath);
+
+  Future<List<SSHIdentity>> fromFiles(List<String> paths) async => [
+        for (final path in paths) ...await _fileIdentities(path),
       ];
 
   // ---- key files -----------------------------------------------------------

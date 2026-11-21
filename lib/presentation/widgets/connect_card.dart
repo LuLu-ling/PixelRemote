@@ -1,20 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../application/connection_log.dart';
 import '../../application/providers.dart';
 import '../../domain/entities/connection_profile.dart';
 import '../../domain/entities/ssh_address.dart';
 import '../../domain/errors.dart';
 import '../l10n.dart';
 import '../theme/app_theme.dart';
+import 'connection_log_panel.dart';
 
 /// Address bar plus optional advanced fields; builds a [ConnectionProfile]
 /// and hands it to the session controller.
 class ConnectCard extends ConsumerStatefulWidget {
-  const ConnectCard({super.key, required this.editing, this.error});
+  const ConnectCard({super.key, required this.editing, this.error, this.log});
 
   final ValueNotifier<ConnectionProfile?> editing;
   final RemoteException? error;
+  final ConnectionLog? log;
 
   @override
   ConsumerState<ConnectCard> createState() => _ConnectCardState();
@@ -145,7 +148,15 @@ class _ConnectCardState extends ConsumerState<ConnectCard> {
             ),
             if (error != null && error.kind != RemoteErrorKind.cancelled) ...[
               const SizedBox(height: 14),
-              _ErrorBanner(message: l10n.error(error)),
+              _ErrorBanner(
+                message: l10n.error(error),
+                action: widget.log == null
+                    ? null
+                    : TextButton(
+                        onPressed: () => ConnectionLogPanel.show(context, widget.log!),
+                        child: Text(l10n.viewLog),
+                      ),
+              ),
             ],
             const SizedBox(height: 8),
             Align(
@@ -210,9 +221,10 @@ class _ConnectCardState extends ConsumerState<ConnectCard> {
 }
 
 class _ErrorBanner extends StatelessWidget {
-  const _ErrorBanner({required this.message});
+  const _ErrorBanner({required this.message, this.action});
 
   final String message;
+  final Widget? action;
 
   @override
   Widget build(BuildContext context) {
@@ -230,6 +242,7 @@ class _ErrorBanner extends StatelessWidget {
           Icon(Icons.error_outline_rounded, color: danger, size: 20),
           const SizedBox(width: 10),
           Expanded(child: SelectableText(message, style: const TextStyle(height: 1.4))),
+          ?action,
         ],
       ),
     );

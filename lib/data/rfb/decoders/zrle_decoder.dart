@@ -15,7 +15,7 @@ final class ZrleDecoder implements RectDecoder {
   final _tile = Uint32List(64 * 64);
 
   @override
-  Future<void> decode(ByteReader input, RfbRect r, Framebuffer fb, PixelFormat pf) async {
+  Future<String> decode(ByteReader input, RfbRect r, Framebuffer fb, PixelFormat pf) async {
     final d = _zlib.inflate(await input.read(await input.u32()));
     final cp = pf.compactSize;
     var o = 0;
@@ -80,5 +80,6 @@ final class ZrleDecoder implements RectDecoder {
         fb.blit(tile, px);
       }
     }
+    return 'ZRLE';
   }
 }

@@ -57,7 +57,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                               style: text.bodyLarge?.copyWith(color: AppColors.of(context).muted, height: 1.5),
                             ),
                             const SizedBox(height: 32),
-                            ConnectCard(editing: _editing, error: session is SessionIdle ? session.error : null),
+                            ConnectCard(editing: _editing, error: session is SessionIdle ? session.error : null, log: session.log),
                             const SizedBox(height: 44),
                             RecentConnections(onEdit: (p) => _editing.value = p),
                             const SizedBox(height: 48),

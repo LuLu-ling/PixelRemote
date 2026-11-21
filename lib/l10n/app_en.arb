@@ -12,7 +12,7 @@
   "identityFile": "Private key file",
   "identityFileHint": "Defaults to ssh-agent and ~/.ssh/id_*",
   "startCommand": "Start command",
-  "startCommandHint": "e.g. x11vnc -localhost -display :0 -once",
+  "startCommandHint": "e.g. x11vnc -localhost -display :0 -forever -shared",
   "save": "Save",
   "saved": "Saved",
   "cancel": "Cancel",
@@ -24,11 +24,29 @@
   "delete": "Delete",
   "justNow": "just now",
   "minutesAgo": "{count, plural, =1{1 minute ago} other{{count} minutes ago}}",
-  "@minutesAgo": {"placeholders": {"count": {"type": "int"}}},
+  "@minutesAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "hoursAgo": "{count, plural, =1{1 hour ago} other{{count} hours ago}}",
-  "@hoursAgo": {"placeholders": {"count": {"type": "int"}}},
+  "@hoursAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "daysAgo": "{count, plural, =1{yesterday} other{{count} days ago}}",
-  "@daysAgo": {"placeholders": {"count": {"type": "int"}}},
+  "@daysAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "neverConnected": "not connected yet",
   "footer": "SSH tunnel · RFB 3.8 · Tight · ZRLE · Extended clipboard",
   "language": "Language",
@@ -39,25 +57,55 @@
   "themeDark": "Dark",
   "defaultSettings": "Default stream settings",
   "connectingTo": "Connecting to {target}",
-  "@connectingTo": {"placeholders": {"target": {"type": "String"}}},
+  "@connectingTo": {
+    "placeholders": {
+      "target": {
+        "type": "String"
+      }
+    }
+  },
   "stageResolving": "Resolving address",
   "stageConnecting": "Establishing SSH session",
   "stagePreparing": "Preparing remote host",
   "stageTunnelling": "Opening encrypted tunnel",
   "stageNegotiating": "Negotiating display",
   "errorInvalidAddress": "“{address}” isn't a valid SSH address.",
-  "@errorInvalidAddress": {"placeholders": {"address": {"type": "String"}}},
+  "@errorInvalidAddress": {
+    "placeholders": {
+      "address": {
+        "type": "String"
+      }
+    }
+  },
   "errorHostUnreachable": "Couldn't reach the SSH server. Check the host name, port and network.",
   "errorAuthFailed": "SSH authentication failed.",
   "errorHostKeyRejected": "The host key wasn't trusted, so the connection was stopped.",
   "errorHostKeyChanged": "Warning: this host's key has changed. Someone could be intercepting the connection, so it was refused.",
   "errorVncUnavailable": "Nothing is listening on {target} on the remote host. Start a VNC server there, or set a start command under Advanced options.",
-  "@errorVncUnavailable": {"placeholders": {"target": {"type": "String"}}},
+  "@errorVncUnavailable": {
+    "placeholders": {
+      "target": {
+        "type": "String"
+      }
+    }
+  },
   "errorVncAuthFailed": "The VNC password was rejected.",
   "errorUnsupportedSecurity": "The VNC server only offers security types this client doesn't support ({types}). Enable “None” or “VncAuth”; the SSH tunnel already encrypts the session.",
-  "@errorUnsupportedSecurity": {"placeholders": {"types": {"type": "String"}}},
+  "@errorUnsupportedSecurity": {
+    "placeholders": {
+      "types": {
+        "type": "String"
+      }
+    }
+  },
   "errorProtocol": "Protocol error: {detail}",
-  "@errorProtocol": {"placeholders": {"detail": {"type": "String"}}},
+  "@errorProtocol": {
+    "placeholders": {
+      "detail": {
+        "type": "String"
+      }
+    }
+  },
   "errorDisconnected": "The remote session ended.",
   "errorCancelled": "Connection cancelled.",
   "secretSshPassword": "SSH password",
@@ -65,10 +113,22 @@
   "secretVncPassword": "VNC password",
   "secretChallenge": "Verification required",
   "secretFor": "For {subject}",
-  "@secretFor": {"placeholders": {"subject": {"type": "String"}}},
+  "@secretFor": {
+    "placeholders": {
+      "subject": {
+        "type": "String"
+      }
+    }
+  },
   "hostKeyTitle": "Verify host identity",
   "hostKeyBody": "This is the first connection to {host}. Before continuing, check that this fingerprint matches the server's.",
-  "@hostKeyBody": {"placeholders": {"host": {"type": "String"}}},
+  "@hostKeyBody": {
+    "placeholders": {
+      "host": {
+        "type": "String"
+      }
+    }
+  },
   "hostKeyTrust": "Trust and connect",
   "streamSettings": "Display & stream",
   "statsOverlay": "Statistics overlay",
@@ -86,7 +146,13 @@
   "qualityLossless": "Lossless",
   "frameRate": "Frame rate",
   "fps": "{value} fps",
-  "@fps": {"placeholders": {"value": {"type": "int"}}},
+  "@fps": {
+    "placeholders": {
+      "value": {
+        "type": "int"
+      }
+    }
+  },
   "resolution": "Resolution",
   "resolutionNative": "Server default",
   "resolutionWindow": "Match window",
@@ -99,14 +165,32 @@
   "bandwidthHint": "Frames are paced so the stream stays under this limit.",
   "unlimited": "Unlimited",
   "mbps": "{value} Mbps",
-  "@mbps": {"placeholders": {"value": {"type": "int"}}},
+  "@mbps": {
+    "placeholders": {
+      "value": {
+        "type": "int"
+      }
+    }
+  },
   "keyMapping": "Keyboard mapping",
   "mappingAuto": "Automatic",
   "mappingOff": "Off (pass-through)",
   "mappingCtrlCmd": "Swap Ctrl ⇄ ⌘",
   "mappingAltCmd": "Swap Alt ⇄ ⌘",
   "mappingActive": "In effect: {mode} · {local} → {remote}",
-  "@mappingActive": {"placeholders": {"mode": {"type": "String"}, "local": {"type": "String"}, "remote": {"type": "String"}}},
+  "@mappingActive": {
+    "placeholders": {
+      "mode": {
+        "type": "String"
+      },
+      "local": {
+        "type": "String"
+      },
+      "remote": {
+        "type": "String"
+      }
+    }
+  },
   "osMac": "macOS",
   "osWindows": "Windows",
   "osLinux": "Linux",
@@ -119,5 +203,27 @@
   "statsDown": "Down",
   "statsUp": "Up",
   "statsFrameRate": "Frame rate",
-  "statsResolution": "Resolution"
+  "statsResolution": "Resolution",
+  "connectionLog": "Connection log",
+  "copyLog": "Copy all",
+  "copied": "Copied to the clipboard",
+  "viewLog": "View connection log",
+  "logEmpty": "Nothing logged yet.",
+  "statsEncoding": "Encoding",
+  "qualityNoEffect": "This server is sending {encoding}, which is lossless, so image quality has no effect here. Lower the colour depth, resolution or frame rate to save bandwidth.",
+  "@qualityNoEffect": {
+    "placeholders": {
+      "encoding": {
+        "type": "String"
+      }
+    }
+  },
+  "depthRejected": "The server didn't accept {bits}-bit colour, so the session stayed on the previous depth. The connection log has the details.",
+  "@depthRejected": {
+    "placeholders": {
+      "bits": {
+        "type": "int"
+      }
+    }
+  }
 }

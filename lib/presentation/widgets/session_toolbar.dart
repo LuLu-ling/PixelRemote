@@ -14,7 +14,9 @@ class SessionToolbar extends StatelessWidget {
     required this.fullScreen,
     required this.statsOn,
     required this.settingsOpen,
+    required this.logOpen,
     required this.onToggleSettings,
+    required this.onToggleLog,
     required this.onToggleStats,
     required this.onToggleFullScreen,
     required this.onRefresh,
@@ -23,8 +25,8 @@ class SessionToolbar extends StatelessWidget {
   });
 
   final String title;
-  final bool fullScreen, statsOn, settingsOpen;
-  final VoidCallback onToggleSettings, onToggleStats, onToggleFullScreen, onRefresh, onDisconnect;
+  final bool fullScreen, statsOn, settingsOpen, logOpen;
+  final VoidCallback onToggleSettings, onToggleLog, onToggleStats, onToggleFullScreen, onRefresh, onDisconnect;
   final ValueChanged<List<int>> onSendKeys;
 
   static const _combos = <String, List<int>>{
@@ -66,6 +68,7 @@ class SessionToolbar extends StatelessWidget {
           divider,
           toggle(Icons.tune_rounded, l10n.streamSettings, settingsOpen, onToggleSettings),
           toggle(Icons.query_stats_rounded, l10n.statsOverlay, statsOn, onToggleStats),
+          toggle(Icons.receipt_long_rounded, l10n.connectionLog, logOpen, onToggleLog),
           PopupMenuButton<List<int>>(
             tooltip: l10n.sendKeys,
             icon: Icon(Icons.keyboard_command_key_rounded, size: 20, color: colors.muted),

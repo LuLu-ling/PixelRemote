@@ -8,6 +8,7 @@ final class SessionStats {
     this.fps = 0,
     this.width = 0,
     this.height = 0,
+    this.encoding,
   });
 
   static const empty = SessionStats();
@@ -22,4 +23,7 @@ final class SessionStats {
   final double fps;
   final int width;
   final int height;
+
+  /// The encoding carrying most of the recent traffic, e.g. "Tight JPEG" or "ZRLE".
+  final String? encoding;
 }

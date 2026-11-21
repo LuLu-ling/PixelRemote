@@ -47,7 +47,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get startCommand => 'Start command';
 
   @override
-  String get startCommandHint => 'e.g. x11vnc -localhost -display :0 -once';
+  String get startCommandHint =>
+      'e.g. x11vnc -localhost -display :0 -forever -shared';
 
   @override
   String get save => 'Save';
@@ -380,4 +381,32 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get statsResolution => 'Resolution';
+
+  @override
+  String get connectionLog => 'Connection log';
+
+  @override
+  String get copyLog => 'Copy all';
+
+  @override
+  String get copied => 'Copied to the clipboard';
+
+  @override
+  String get viewLog => 'View connection log';
+
+  @override
+  String get logEmpty => 'Nothing logged yet.';
+
+  @override
+  String get statsEncoding => 'Encoding';
+
+  @override
+  String qualityNoEffect(String encoding) {
+    return 'This server is sending $encoding, which is lossless, so image quality has no effect here. Lower the colour depth, resolution or frame rate to save bandwidth.';
+  }
+
+  @override
+  String depthRejected(int bits) {
+    return 'The server didn\'t accept $bits-bit colour, so the session stayed on the previous depth. The connection log has the details.';
+  }
 }

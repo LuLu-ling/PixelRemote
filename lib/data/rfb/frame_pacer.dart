@@ -1,7 +1,8 @@
 import 'dart:math';
 
-/// Decides when to ask for the next frame: never faster than the target frame
-/// rate, and never above the bandwidth cap (token bucket with a short burst).
+/// Decides when the next frame may be requested: never faster than the target
+/// frame rate, and never above the bandwidth cap (a token bucket with a short
+/// burst allowance, charged as frames arrive).
 final class FramePacer {
   FramePacer({required int fps, required int maxMbps, Stopwatch? clock}) : _clock = clock ?? (Stopwatch()..start()) {
     configure(fps: fps, maxMbps: maxMbps);
@@ -14,7 +15,7 @@ final class FramePacer {
   late int _intervalUs;
   late double _bytesPerUs;
   double _tokens = 0;
-  int _lastRequestUs = 0, _lastRefillUs = 0;
+  int _lastRequestUs = -1 << 40, _lastRefillUs = 0;
 
   double get _burst => _bytesPerUs * _burstWindowUs;
 
@@ -26,15 +27,23 @@ final class FramePacer {
 
   void onRequest() => _lastRequestUs = _clock.elapsedMicroseconds;
 
-  /// Accounts for a received frame of [bytes] and returns the delay before the next request.
-  Duration onFrame(int bytes) {
-    final now = _clock.elapsedMicroseconds;
-    var waitUs = _intervalUs - (now - _lastRequestUs);
-    if (_bytesPerUs > 0) {
-      _tokens = min(_burst, _tokens + (now - _lastRefillUs) * _bytesPerUs) - bytes;
-      if (_tokens < 0) waitUs = max(waitUs, (-_tokens / _bytesPerUs).ceil());
-    }
-    _lastRefillUs = now;
+  /// Charges a received frame of [bytes] against the bandwidth budget.
+  void onReceived(int bytes) {
+    _refill();
+    if (_bytesPerUs > 0) _tokens -= bytes;
+  }
+
+  /// How long to wait before the next request.
+  Duration nextDelay() {
+    _refill();
+    var waitUs = _intervalUs - (_clock.elapsedMicroseconds - _lastRequestUs);
+    if (_bytesPerUs > 0 && _tokens < 0) waitUs = max(waitUs, (-_tokens / _bytesPerUs).ceil());
     return Duration(microseconds: max(0, waitUs));
+  }
+
+  void _refill() {
+    final now = _clock.elapsedMicroseconds;
+    if (_bytesPerUs > 0) _tokens = min(_burst, _tokens + (now - _lastRefillUs) * _bytesPerUs);
+    _lastRefillUs = now;
   }
 }

@@ -57,6 +57,10 @@ class StreamSettingsPanel extends ConsumerWidget {
                   selected: {s.quality},
                   onSelectionChanged: (v) => set(s.copyWith(quality: v.first)),
                 ),
+                if (ref.watch(sessionStatsProvider).value?.encoding case final enc? when enc == 'ZRLE' || enc == 'Raw') ...[
+                  const SizedBox(height: 8),
+                  Text(l10n.qualityNoEffect(enc), style: hint),
+                ],
                 gap,
                 SectionLabel(l10n.frameRate, trailing: Text(l10n.fps(s.frameRate), style: hint)),
                 Wrap(

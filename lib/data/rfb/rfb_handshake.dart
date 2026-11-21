@@ -4,7 +4,9 @@ import 'dart:typed_data';
 import 'package:pointycastle/export.dart';
 
 import '../../domain/errors.dart';
+import '../../domain/services/session_log.dart';
 import 'byte_reader.dart';
+import 'rfb_wire.dart';
 
 final class ServerInit {
   const ServerInit(this.width, this.height, this.name);
@@ -19,11 +21,15 @@ Future<ServerInit> performHandshake(
   ByteReader input,
   void Function(List<int>) write,
   Future<String?> Function() password,
+  SessionLog log,
 ) async {
-  final banner = RegExp(r'^RFB (\d{3})\.(\d{3})\n$').firstMatch(ascii.decode(await input.read(12), allowInvalid: true));
+  const src = 'rfb';
+  final bannerText = ascii.decode(await input.read(12), allowInvalid: true);
+  final banner = RegExp(r'^RFB (\d{3})\.(\d{3})\n$').firstMatch(bannerText);
   if (banner == null) throw const RemoteException(RemoteErrorKind.protocol, 'not a VNC server');
   final major = int.parse(banner[1]!), minor = int.parse(banner[2]!);
   final version = major > 3 || minor >= 8 ? 8 : (minor >= 7 ? 7 : 3);
+  log.info(src, 'Server speaks ${bannerText.trim()}${minor == 889 ? ' (Apple)' : ''}; using RFB 3.$version');
   write(ascii.encode('RFB 003.00$version\n'));
 
   const none = 1, vncAuth = 2;
@@ -35,11 +41,13 @@ Future<ServerInit> performHandshake(
     final count = await input.u8();
     if (count == 0) throw RemoteException(RemoteErrorKind.protocol, await _reason(input));
     final offered = await input.read(count);
+    final names = offered.map(securityTypeName).join(', ');
     type = offered.contains(none)
         ? none
         : offered.contains(vncAuth)
             ? vncAuth
-            : throw RemoteException(RemoteErrorKind.unsupportedSecurity, offered.join(', '));
+            : throw RemoteException(RemoteErrorKind.unsupportedSecurity, names);
+    log.info(src, 'Security types offered: $names → using ${securityTypeName(type)}');
     write([type]);
   }
 
@@ -49,18 +57,24 @@ Future<ServerInit> performHandshake(
     if (secret == null) throw const RemoteException(RemoteErrorKind.cancelled);
     write(vncAuthResponse(secret, challenge));
   } else if (type != none) {
-    throw RemoteException(RemoteErrorKind.unsupportedSecurity, '$type');
+    throw RemoteException(RemoteErrorKind.unsupportedSecurity, securityTypeName(type));
   }
 
   if (type == vncAuth || version == 8) {
     if (await input.u32() != 0) {
       throw RemoteException(RemoteErrorKind.vncAuthFailed, version == 8 ? await _reason(input) : null);
     }
+    if (type == vncAuth) log.info(src, 'VNC password accepted');
   }
 
   write(const [1]); // ClientInit: shared session, don't kick other viewers
   final head = ByteData.sublistView(await input.read(24));
   final name = utf8.decode(await input.read(head.getUint32(20)), allowMalformed: true);
+  log.info(
+    src,
+    'Desktop "$name" ${head.getUint16(0)}×${head.getUint16(2)}; server pixel format '
+    '${head.getUint8(4)} bpp, depth ${head.getUint8(5)}, ${head.getUint8(6) == 0 ? 'little' : 'big'}-endian',
+  );
   return ServerInit(head.getUint16(0), head.getUint16(2), name);
 }
 

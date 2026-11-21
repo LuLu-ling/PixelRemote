@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import '../entities/stream_settings.dart';
 import '../errors.dart';
 import 'secure_tunnel.dart';
+import 'session_log.dart';
 
 /// Read-only view of the remote framebuffer as tightly packed RGBA8888.
 abstract interface class FrameView {
@@ -42,9 +43,16 @@ abstract interface class RemoteDesktopSession {
   void sendKey(int keysym, {required bool down});
   void sendPointer(int x, int y, int buttons);
   void sendClipboard(String text);
+
+  /// Applies everything that can change mid-stream. The colour depth is
+  /// negotiated when a connection opens and is ignored here.
   void applySettings(StreamSettings settings);
   void resize(int width, int height);
   void refresh();
+
+  /// Bytes received per encoding (e.g. "Tight JPEG", "ZRLE") since the last call.
+  Map<String, int> takeEncodingStats();
+
   Future<void> close();
 }
 
@@ -53,5 +61,6 @@ abstract interface class RemoteDesktopProtocol {
     ByteChannel channel,
     StreamSettings settings, {
     required Future<String?> Function() password,
+    required SessionLog log,
   });
 }

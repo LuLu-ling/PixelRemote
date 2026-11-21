@@ -47,7 +47,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get startCommand => '启动命令';
 
   @override
-  String get startCommandHint => '例如 x11vnc -localhost -display :0 -once';
+  String get startCommandHint =>
+      '例如 x11vnc -localhost -display :0 -forever -shared';
 
   @override
   String get save => '保存';
@@ -362,4 +363,32 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get statsResolution => '分辨率';
+
+  @override
+  String get connectionLog => '连接日志';
+
+  @override
+  String get copyLog => '全部复制';
+
+  @override
+  String get copied => '已复制到剪贴板';
+
+  @override
+  String get viewLog => '查看连接日志';
+
+  @override
+  String get logEmpty => '暂无日志。';
+
+  @override
+  String get statsEncoding => '编码';
+
+  @override
+  String qualityNoEffect(String encoding) {
+    return '该服务器使用 $encoding（无损）传输，画质设置在这里不起作用。可降低色深、分辨率或帧率来节省带宽。';
+  }
+
+  @override
+  String depthRejected(int bits) {
+    return '服务器不接受 $bits 位色深，会话已保持原色深。详情见连接日志。';
+  }
 }

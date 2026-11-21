@@ -8,6 +8,9 @@ import '../domain/errors.dart';
 import '../domain/services/platform_services.dart';
 import '../domain/services/remote_desktop.dart';
 import '../domain/services/secure_tunnel.dart';
+import '../domain/services/session_log.dart';
+import 'connection_log.dart';
+import 'managed_desktop.dart';
 import 'session_monitor.dart';
 
 enum ConnectStage { resolving, connecting, preparing, tunnelling, negotiating }
@@ -21,7 +24,9 @@ final class ActiveSession {
     required this.desktop,
     required this.remoteOs,
     required this.monitor,
-  });
+    required this.log,
+    Stream<DepthRejection>? rejections,
+  }) : rejections = rejections ?? const Stream.empty();
 
   final ConnectionProfile profile;
   final SshEndpoint endpoint;
@@ -29,12 +34,16 @@ final class ActiveSession {
   final RemoteDesktopSession desktop;
   final HostOs remoteOs;
   final SessionMonitor monitor;
+  final ConnectionLog log;
+
+  /// Colour depths the server refused (the session kept running on [DepthRejection.kept]).
+  final Stream<DepthRejection> rejections;
 
   /// Completes with the reason the session ended on its own.
   late final Future<RemoteException?> ended = Future.any([
     desktop.closed,
     tunnel.done.then(
-      (_) => const RemoteException(RemoteErrorKind.disconnected),
+      (_) => const RemoteException(RemoteErrorKind.disconnected, 'SSH connection closed'),
       onError: (Object e) => RemoteException(RemoteErrorKind.disconnected, '$e'),
     ),
   ]);
@@ -55,7 +64,7 @@ final class ConnectSession {
     required this._interaction,
   });
 
-  static const _vncAuthAttempts = 3;
+  static const _src = 'connect', _vncAuthAttempts = 3;
 
   final SshEndpointResolver _resolver;
   final TunnelConnector _tunnels;
@@ -65,46 +74,68 @@ final class ConnectSession {
   Future<ActiveSession> call(
     ConnectionProfile profile,
     StreamSettings settings, {
+    required ConnectionLog log,
     void Function(ConnectStage stage)? onStage,
   }) async {
-    final stage = onStage ?? (_) {};
+    var connecting = true;
+    void stage(ConnectStage s) => connecting ? onStage?.call(s) : null;
+    final watch = Stopwatch()..start();
+
     stage(ConnectStage.resolving);
     final address = SshAddress.tryParse(profile.address);
     if (address == null) throw RemoteException(RemoteErrorKind.invalidAddress, profile.address);
     final endpoint = _resolver.resolve(address, identityFile: profile.identityFile);
+    log.info(_src, '"${profile.address}" resolves to ${endpoint.user}@${endpoint.host}:${endpoint.port}');
+    log.debug(_src, 'Key files: ${endpoint.identityFiles.join(', ')}; ssh-agent: ${endpoint.agentSocket ?? 'none'}');
 
     stage(ConnectStage.connecting);
-    final tunnel = await _guard(() => _tunnels.connect(endpoint));
+    final tunnel = await _guard(() => _tunnels.connect(endpoint, log));
     try {
       stage(ConnectStage.preparing);
       final remoteOs = await _detectOs(tunnel);
+      log.info(_src, 'Remote OS: ${remoteOs.name}');
       final startCommand = profile.startCommand?.trim() ?? '';
       if (startCommand.isNotEmpty) await tunnel.spawn(startCommand);
 
-      for (var attempt = 1;; attempt++) {
-        stage(ConnectStage.tunnelling);
-        final channel = MeteredChannel(await _openVnc(tunnel, profile, retry: startCommand.isNotEmpty));
-        stage(ConnectStage.negotiating);
-        try {
-          final desktop = await _guard(() => _protocol.open(
-                channel,
-                settings,
-                password: () => _interaction.askSecret(SecretKind.vncPassword, endpoint.host),
-              ));
-          final monitor = SessionMonitor(tunnel: tunnel, traffic: channel, desktop: desktop)..start();
-          return ActiveSession(
-            profile: profile,
-            endpoint: endpoint,
-            tunnel: tunnel,
-            desktop: desktop,
-            remoteOs: remoteOs,
-            monitor: monitor,
-          );
-        } on RemoteException catch (e) {
-          if (e.kind != RemoteErrorKind.vncAuthFailed || attempt >= _vncAuthAttempts) rethrow;
+      // Remembered for the session so reopening a stream doesn't ask again.
+      String? vncPassword;
+      final meter = TrafficMeter();
+      Future<RemoteDesktopSession> openDesktop(StreamSettings s) async {
+        for (var attempt = 1;; attempt++) {
+          stage(ConnectStage.tunnelling);
+          final channel = MeteredChannel(await _openVnc(tunnel, profile, retry: startCommand.isNotEmpty), meter);
+          stage(ConnectStage.negotiating);
+          try {
+            return await _guard(() => _protocol.open(
+                  channel,
+                  s,
+                  log: log,
+                  password: () async =>
+                      vncPassword ??= await _interaction.askSecret(SecretKind.vncPassword, endpoint.host),
+                ));
+          } on RemoteException catch (e) {
+            if (e.kind != RemoteErrorKind.vncAuthFailed || attempt >= _vncAuthAttempts) rethrow;
+            log.warn(_src, 'VNC password rejected (${e.detail ?? 'no reason given'}); asking again');
+            vncPassword = null;
+          }
         }
       }
-    } catch (_) {
+
+      final desktop = await ManagedDesktop.start(openDesktop, settings, log);
+      connecting = false;
+      log.info(_src, 'Connected in ${watch.elapsedMilliseconds} ms');
+      return ActiveSession(
+        profile: profile,
+        endpoint: endpoint,
+        tunnel: tunnel,
+        desktop: desktop,
+        remoteOs: remoteOs,
+        monitor: SessionMonitor(tunnel: tunnel, traffic: meter, desktop: desktop)..start(),
+        log: log,
+        rejections: desktop.rejections,
+      );
+    } catch (e) {
+      log.error(_src, 'Connection failed: $e');
       await tunnel.close();
       rethrow;
     }

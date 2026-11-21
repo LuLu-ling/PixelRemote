@@ -12,7 +12,7 @@
   "identityFile": "私钥文件",
   "identityFileHint": "默认使用 ssh-agent 和 ~/.ssh/id_*",
   "startCommand": "启动命令",
-  "startCommandHint": "例如 x11vnc -localhost -display :0 -once",
+  "startCommandHint": "例如 x11vnc -localhost -display :0 -forever -shared",
   "save": "保存",
   "saved": "已保存",
   "cancel": "取消",
@@ -24,11 +24,29 @@
   "delete": "删除",
   "justNow": "刚刚",
   "minutesAgo": "{count} 分钟前",
-  "@minutesAgo": {"placeholders": {"count": {"type": "int"}}},
+  "@minutesAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "hoursAgo": "{count} 小时前",
-  "@hoursAgo": {"placeholders": {"count": {"type": "int"}}},
+  "@hoursAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "daysAgo": "{count, plural, =1{昨天} other{{count} 天前}}",
-  "@daysAgo": {"placeholders": {"count": {"type": "int"}}},
+  "@daysAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "neverConnected": "尚未连接",
   "footer": "SSH 隧道 · RFB 3.8 · Tight · ZRLE · 扩展剪贴板",
   "language": "语言",
@@ -39,25 +57,55 @@
   "themeDark": "深色",
   "defaultSettings": "默认画面设置",
   "connectingTo": "正在连接 {target}",
-  "@connectingTo": {"placeholders": {"target": {"type": "String"}}},
+  "@connectingTo": {
+    "placeholders": {
+      "target": {
+        "type": "String"
+      }
+    }
+  },
   "stageResolving": "解析地址",
   "stageConnecting": "建立 SSH 会话",
   "stagePreparing": "准备远程主机",
   "stageTunnelling": "打开加密隧道",
   "stageNegotiating": "协商显示参数",
   "errorInvalidAddress": "“{address}”不是有效的 SSH 地址。",
-  "@errorInvalidAddress": {"placeholders": {"address": {"type": "String"}}},
+  "@errorInvalidAddress": {
+    "placeholders": {
+      "address": {
+        "type": "String"
+      }
+    }
+  },
   "errorHostUnreachable": "无法连接 SSH 服务器，请检查主机名、端口和网络。",
   "errorAuthFailed": "SSH 身份验证失败。",
   "errorHostKeyRejected": "未信任主机密钥，已停止连接。",
   "errorHostKeyChanged": "警告：该主机的密钥已变更，可能有人在拦截连接，已拒绝连接。",
   "errorVncUnavailable": "远程主机上的 {target} 没有服务在监听。请在远程主机上启动 VNC 服务，或在高级选项中设置启动命令。",
-  "@errorVncUnavailable": {"placeholders": {"target": {"type": "String"}}},
+  "@errorVncUnavailable": {
+    "placeholders": {
+      "target": {
+        "type": "String"
+      }
+    }
+  },
   "errorVncAuthFailed": "VNC 密码错误。",
   "errorUnsupportedSecurity": "VNC 服务器只提供本客户端不支持的安全类型（{types}）。请启用 “None” 或 “VncAuth”；SSH 隧道已对会话加密。",
-  "@errorUnsupportedSecurity": {"placeholders": {"types": {"type": "String"}}},
+  "@errorUnsupportedSecurity": {
+    "placeholders": {
+      "types": {
+        "type": "String"
+      }
+    }
+  },
   "errorProtocol": "协议错误：{detail}",
-  "@errorProtocol": {"placeholders": {"detail": {"type": "String"}}},
+  "@errorProtocol": {
+    "placeholders": {
+      "detail": {
+        "type": "String"
+      }
+    }
+  },
   "errorDisconnected": "远程会话已结束。",
   "errorCancelled": "已取消连接。",
   "secretSshPassword": "SSH 密码",
@@ -65,10 +113,22 @@
   "secretVncPassword": "VNC 密码",
   "secretChallenge": "需要验证",
   "secretFor": "用于 {subject}",
-  "@secretFor": {"placeholders": {"subject": {"type": "String"}}},
+  "@secretFor": {
+    "placeholders": {
+      "subject": {
+        "type": "String"
+      }
+    }
+  },
   "hostKeyTitle": "验证主机身份",
   "hostKeyBody": "这是首次连接 {host}。继续之前，请确认以下指纹与服务器一致。",
-  "@hostKeyBody": {"placeholders": {"host": {"type": "String"}}},
+  "@hostKeyBody": {
+    "placeholders": {
+      "host": {
+        "type": "String"
+      }
+    }
+  },
   "hostKeyTrust": "信任并连接",
   "streamSettings": "画面与传输",
   "statsOverlay": "统计浮窗",
@@ -86,7 +146,13 @@
   "qualityLossless": "无损",
   "frameRate": "帧率",
   "fps": "{value} fps",
-  "@fps": {"placeholders": {"value": {"type": "int"}}},
+  "@fps": {
+    "placeholders": {
+      "value": {
+        "type": "int"
+      }
+    }
+  },
   "resolution": "分辨率",
   "resolutionNative": "服务器默认",
   "resolutionWindow": "匹配窗口",
@@ -99,14 +165,32 @@
   "bandwidthHint": "系统会控制帧的发送节奏，使视频流不超过此上限。",
   "unlimited": "不限",
   "mbps": "{value} Mbps",
-  "@mbps": {"placeholders": {"value": {"type": "int"}}},
+  "@mbps": {
+    "placeholders": {
+      "value": {
+        "type": "int"
+      }
+    }
+  },
   "keyMapping": "键盘映射",
   "mappingAuto": "自动",
   "mappingOff": "关闭（原样发送）",
   "mappingCtrlCmd": "交换 Ctrl ⇄ ⌘",
   "mappingAltCmd": "交换 Alt ⇄ ⌘",
   "mappingActive": "当前生效：{mode} · {local} → {remote}",
-  "@mappingActive": {"placeholders": {"mode": {"type": "String"}, "local": {"type": "String"}, "remote": {"type": "String"}}},
+  "@mappingActive": {
+    "placeholders": {
+      "mode": {
+        "type": "String"
+      },
+      "local": {
+        "type": "String"
+      },
+      "remote": {
+        "type": "String"
+      }
+    }
+  },
   "osMac": "macOS",
   "osWindows": "Windows",
   "osLinux": "Linux",
@@ -119,5 +203,27 @@
   "statsDown": "下行",
   "statsUp": "上行",
   "statsFrameRate": "帧率",
-  "statsResolution": "分辨率"
+  "statsResolution": "分辨率",
+  "connectionLog": "连接日志",
+  "copyLog": "全部复制",
+  "copied": "已复制到剪贴板",
+  "viewLog": "查看连接日志",
+  "logEmpty": "暂无日志。",
+  "statsEncoding": "编码",
+  "qualityNoEffect": "该服务器使用 {encoding}（无损）传输，画质设置在这里不起作用。可降低色深、分辨率或帧率来节省带宽。",
+  "@qualityNoEffect": {
+    "placeholders": {
+      "encoding": {
+        "type": "String"
+      }
+    }
+  },
+  "depthRejected": "服务器不接受 {bits} 位色深，会话已保持原色深。详情见连接日志。",
+  "@depthRejected": {
+    "placeholders": {
+      "bits": {
+        "type": "int"
+      }
+    }
+  }
 }

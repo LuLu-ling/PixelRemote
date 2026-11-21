@@ -173,7 +173,7 @@ abstract class AppLocalizations {
   /// No description provided for @startCommandHint.
   ///
   /// In en, this message translates to:
-  /// **'e.g. x11vnc -localhost -display :0 -once'**
+  /// **'e.g. x11vnc -localhost -display :0 -forever -shared'**
   String get startCommandHint;
 
   /// No description provided for @save.
@@ -739,6 +739,54 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Resolution'**
   String get statsResolution;
+
+  /// No description provided for @connectionLog.
+  ///
+  /// In en, this message translates to:
+  /// **'Connection log'**
+  String get connectionLog;
+
+  /// No description provided for @copyLog.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy all'**
+  String get copyLog;
+
+  /// No description provided for @copied.
+  ///
+  /// In en, this message translates to:
+  /// **'Copied to the clipboard'**
+  String get copied;
+
+  /// No description provided for @viewLog.
+  ///
+  /// In en, this message translates to:
+  /// **'View connection log'**
+  String get viewLog;
+
+  /// No description provided for @logEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing logged yet.'**
+  String get logEmpty;
+
+  /// No description provided for @statsEncoding.
+  ///
+  /// In en, this message translates to:
+  /// **'Encoding'**
+  String get statsEncoding;
+
+  /// No description provided for @qualityNoEffect.
+  ///
+  /// In en, this message translates to:
+  /// **'This server is sending {encoding}, which is lossless, so image quality has no effect here. Lower the colour depth, resolution or frame rate to save bandwidth.'**
+  String qualityNoEffect(String encoding);
+
+  /// No description provided for @depthRejected.
+  ///
+  /// In en, this message translates to:
+  /// **'The server didn\'t accept {bits}-bit colour, so the session stayed on the previous depth. The connection log has the details.'**
+  String depthRejected(int bits);
 }
 
 class _AppLocalizationsDelegate

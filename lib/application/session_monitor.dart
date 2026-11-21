@@ -6,22 +6,27 @@ import '../domain/entities/session_stats.dart';
 import '../domain/services/remote_desktop.dart';
 import '../domain/services/secure_tunnel.dart';
 
+/// Byte counters shared by every channel of one session.
+final class TrafficMeter {
+  int received = 0, sent = 0;
+}
+
 /// Decorator that counts bytes flowing through a [ByteChannel].
 final class MeteredChannel implements ByteChannel {
-  MeteredChannel(this._inner);
+  MeteredChannel(this._inner, this._meter);
 
   final ByteChannel _inner;
-  int received = 0, sent = 0;
+  final TrafficMeter _meter;
 
   @override
   late final Stream<Uint8List> input = _inner.input.map((chunk) {
-    received += chunk.length;
+    _meter.received += chunk.length;
     return chunk;
   });
 
   @override
   void write(List<int> bytes) {
-    sent += bytes.length;
+    _meter.sent += bytes.length;
     _inner.write(bytes);
   }
 
@@ -44,7 +49,7 @@ final class SessionMonitor {
   static const _lossWindow = 30;
 
   final SecureTunnel _tunnel;
-  final MeteredChannel _traffic;
+  final TrafficMeter _traffic;
   final RemoteDesktopSession _desktop;
   final Duration period, probeTimeout;
 
@@ -54,6 +59,7 @@ final class SessionMonitor {
   StreamSubscription<void>? _frameSub;
   Timer? _timer;
   Duration? _rtt;
+  String? _encoding;
   int _frames = 0, _lastRx = 0, _lastTx = 0;
   bool _running = false;
 
@@ -79,6 +85,8 @@ final class SessionMonitor {
     final seconds = _clock.elapsedMicroseconds / 1e6;
     _clock.reset();
     final lost = _probes.where((ok) => !ok).length;
+    final usage = _desktop.takeEncodingStats()..remove('CopyRect');
+    if (usage.isNotEmpty) _encoding = usage.entries.reduce((a, b) => a.value >= b.value ? a : b).key;
     latest = SessionStats(
       rtt: _rtt,
       lossPercent: _probes.isEmpty ? 0 : lost * 100 / _probes.length,
@@ -87,6 +95,7 @@ final class SessionMonitor {
       fps: _frames / seconds,
       width: _desktop.frame.width,
       height: _desktop.frame.height,
+      encoding: _encoding,
     );
     _frames = 0;
     _lastRx = _traffic.received;

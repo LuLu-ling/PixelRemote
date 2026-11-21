@@ -14,8 +14,13 @@ tunnel, the way `vncviewer -via` does, so the only port that needs to be reachab
   (including hashed entries) and refuses changed keys.
 - **Stream control, live**: quality presets (Tight JPEG levels or lossless), frame rate
   **15/30/60/75/90/120/144/165**, resolution (server default, match window, or fixed presets via
-  ExtendedDesktopSize), colour depth (24/16/8-bit), and a **bandwidth cap**. Frames are pulled one at a
-  time and paced by a token bucket, so the stream never exceeds the frame rate or the cap.
+  ExtendedDesktopSize), colour depth (24/16/8-bit), and a **bandwidth cap**. Requests are pipelined
+  and paced by a token bucket, so the stream never exceeds the frame rate or the cap. Colour-depth
+  changes open a second stream and switch over only once it works, so a server that rejects a depth
+  can't drop the session.
+- **Connection log** (toolbar, or *View connection log* after a failure): SSH version and negotiated
+  algorithms, host-key decision, auth steps, RFB security, pixel format, the encodings the server
+  actually uses, a 10-second traffic summary, and every settings change, with copy to clipboard.
 - **Floating stats panel** (draggable): latency (SSH round trip), packet loss (unanswered probes),
   down/up throughput with a sparkline, delivered vs. target fps, resolution.
 - **Keyboard mapping between macOS and PC**: automatic (detects the remote OS over SSH), off,
@@ -33,13 +38,41 @@ the tunnel providing encryption, security type *None* or *VncAuth* is fine.
 
 | Remote OS | Example |
 |---|---|
-| Linux (existing X session) | `x0vncserver -localhost -SecurityTypes None -display :0` (TigerVNC) or `x11vnc -localhost -display :0 -nopw -forever` |
+| Linux (existing X session) | `x0vncserver -localhost -SecurityTypes None -display :0` (TigerVNC) or `x11vnc -localhost -display :0 -nopw -forever -shared` |
 | Linux (virtual desktop, resizable) | `vncserver :1 -localhost yes -SecurityTypes None` → VNC port **5901** |
 | macOS | System Settings → Sharing → Screen Sharing → enable *VNC viewers may control screen with password* |
-| Windows | TightVNC / UltraVNC, with *Allow loopback connections* / *Loopback only* enabled |
+| Windows | See [Windows hosts](#windows-hosts) below |
 
 Alternatively, put the server's launch command in **Advanced options → Start command**. PixelRemote runs it
-over SSH and waits for the port to come up.
+over SSH and waits for the port to come up. Servers must allow a second, shared connection (x11vnc: `-shared`,
+not `-once`), because a colour-depth change briefly opens one.
+
+### Windows hosts
+
+1. **SSH**: Settings → System → Optional features → add **OpenSSH Server**, or in an admin PowerShell:
+   ```powershell
+   Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0
+   Start-Service sshd; Set-Service sshd -StartupType Automatic
+   ```
+   Log in with your Windows account name (`user@pc-name`); key files go in `C:\Users\<you>\.ssh\authorized_keys`
+   (administrators: `C:\ProgramData\ssh\administrators_authorized_keys`).
+2. **VNC server**: install [TightVNC](https://www.tightvnc.com/) (or UltraVNC) as a **service**, so the login
+   screen and UAC prompts can be controlled too. In its settings, set a VNC password, enable
+   **Allow loopback connections** and **Loopback connections only**, so port 5900 is reachable only through SSH.
+3. Connect from PixelRemote with `user@pc-name`. Keyboard mapping *Automatic* swaps Ctrl and ⌘ when you
+   connect from a Mac. TightVNC speaks Tight with JPEG, so the quality presets take full effect; it
+   can't change the Windows screen resolution, so pick resolutions on the Windows side.
+
+## How bandwidth is controlled
+
+| Setting | What it does | Works on |
+|---|---|---|
+| Image quality | Sends the Tight JPEG quality level (Low = 1 … High = 8; Lossless disables JPEG) and zlib effort. The server uses JPEG for photo-like areas; text and UI stay lossless. | Tight/JPEG servers: TigerVNC, TurboVNC, x11vnc, TightVNC, UltraVNC. **No effect** on servers without Tight/JPEG; the stats panel shows the encoding in use and the settings panel warns when it is lossless (ZRLE/Raw). |
+| Colour depth | 16-bit or 8-bit pixels: roughly ⅔ or ⅓ of the data for lossless encodings | Every server that accepts the format; if it refuses, the session stays on the previous depth |
+| Resolution | Asks the server to resize its desktop | Servers with ExtendedDesktopSize, e.g. TigerVNC's virtual desktops (`vncserver`/Xvnc) |
+| Frame rate / bandwidth limit | Delays frame requests on the client side | Every server |
+
+The stats panel shows the encoding actually in use, and the connection log has a per-encoding traffic breakdown.
 
 ## Architecture
 
@@ -90,6 +123,8 @@ E2E_SSH=user@host flutter test test/e2e                     # real SSH + RFB aga
 ## Known limitations
 
 - RFB has no H.264. Bandwidth is controlled with JPEG quality, colour depth, frame pacing and the cap.
+- Throughput is bounded by pure-Dart SSH crypto: ChaCha20-Poly1305 (preferred) manages roughly 300+ Mbit/s;
+  servers that offer only AES-GCM would be limited to about 12 Mbit/s.
 - ssh-agent on Windows (named pipe) isn't supported yet; key files and passwords work.
 - macOS's Apple-only auth (RFB type 30) isn't supported; use the VNC-password option.
 - Packet loss is estimated from SSH keep-alive probes (TCP hides real loss from applications).

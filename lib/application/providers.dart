@@ -9,6 +9,7 @@ import '../domain/services/platform_services.dart';
 import '../domain/services/remote_desktop.dart';
 import '../domain/services/secure_tunnel.dart';
 import 'connect_session.dart';
+import 'connection_log.dart';
 import 'controllers.dart';
 
 // ---- ports ---------------------------------------------------------------------
@@ -41,6 +42,9 @@ final connectSessionProvider = Provider(
 final preferencesProvider = NotifierProvider<PreferencesController, AppPreferences>(PreferencesController.new);
 final profilesProvider = NotifierProvider<ProfilesController, List<ConnectionProfile>>(ProfilesController.new);
 final sessionProvider = NotifierProvider<SessionController, SessionState>(SessionController.new);
+
+/// Log of the current or most recent connection.
+final connectionLogProvider = Provider<ConnectionLog?>((ref) => ref.watch(sessionProvider).log);
 
 final sessionStatsProvider = StreamProvider<SessionStats>((ref) {
   final state = ref.watch(sessionProvider);

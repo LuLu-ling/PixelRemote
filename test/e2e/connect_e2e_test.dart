@@ -12,6 +12,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pixel_remote/application/connect_session.dart';
+import 'package:pixel_remote/application/connection_log.dart';
 import 'package:pixel_remote/data/platform/io_local_platform.dart';
 import 'package:pixel_remote/data/rfb/decoders/rect_decoder.dart';
 import 'package:pixel_remote/data/rfb/rfb_session.dart';
@@ -69,8 +70,10 @@ void main() {
     const settings = StreamSettings(quality: ImageQuality.lossless, frameRate: 30);
 
     final stages = <ConnectStage>[];
+    final log = ConnectionLog();
+    addTearDown(() => stdout.writeln('--- connection log ---\n${log.export()}'));
     try {
-      final session = await connect(profile, settings, onStage: stages.add);
+      final session = await connect(profile, settings, log: log, onStage: stages.add);
       final firstFrame = session.desktop.frames.first;
       await firstFrame.timeout(const Duration(seconds: 15));
       final f = session.desktop.frame;

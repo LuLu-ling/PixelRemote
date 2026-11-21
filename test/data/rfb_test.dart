@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pixel_remote/application/connection_log.dart';
 import 'package:pixel_remote/data/rfb/byte_reader.dart';
 import 'package:pixel_remote/data/rfb/decoders/rect_decoder.dart';
 import 'package:pixel_remote/data/rfb/frame_pacer.dart';
@@ -56,6 +57,73 @@ final class _FakeClock implements Stopwatch {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+/// Parses what the client sends, one whole message at a time (type byte first).
+final class _ClientMessages {
+  _ClientMessages(this._in);
+
+  final ByteReader _in;
+
+  Future<Uint8List> next() async {
+    final type = await _in.u8();
+    Future<List<int>> rest() async {
+      switch (type) {
+        case 0:
+          return _in.read(19);
+        case 2:
+          final h = await _in.read(3);
+          return [...h, ...await _in.read(((h[1] << 8) | h[2]) * 4)];
+        case 3:
+          return _in.read(9);
+        case 4:
+          return _in.read(7);
+        case 5:
+          return _in.read(5);
+        case 6:
+          final h = await _in.read(7);
+          return [...h, ...await _in.read(ByteData.sublistView(h).getInt32(3).abs())];
+        case 251:
+          final h = await _in.read(7);
+          return [...h, ...await _in.read(h[5] * 16)];
+        default:
+          throw StateError('unexpected client message $type');
+      }
+    }
+
+    return Uint8List.fromList([type, ...await rest()]);
+  }
+
+  /// Next message other than a FramebufferUpdateRequest.
+  Future<Uint8List> command() async {
+    while (true) {
+      final m = await next();
+      if (m[0] != 3) return m;
+    }
+  }
+
+  Future<Uint8List> request() async {
+    final m = await next();
+    expect(m[0], 3, reason: 'expected a FramebufferUpdateRequest');
+    return m;
+  }
+}
+
+/// Drives the RFB 3.8 handshake (VNC auth) and ServerInit for an [w]×[h] desktop.
+Future<RemoteDesktopSession> _handshake(_Pipe pipe, StreamSettings settings, ConnectionLog log, {int w = 8, int h = 4}) async {
+  final opening = const RfbProtocol(_NoJpeg()).open(pipe, settings, password: () async => 'secret', log: log);
+  final server = pipe.server;
+  pipe.send(ascii.encode('RFB 003.008\n'));
+  expect(ascii.decode(await server.read(12)), 'RFB 003.008\n');
+  pipe.send([1, 2]);
+  expect(await server.u8(), 2);
+  final challenge = Uint8List.fromList(List.generate(16, (i) => i * 7));
+  pipe.send(challenge);
+  expect(await server.read(16), vncAuthResponse('secret', challenge));
+  pipe.send(_u32(0));
+  expect(await server.u8(), 1, reason: 'shared ClientInit');
+  pipe.send([..._u16(w), ..._u16(h), ...List.filled(16, 0), ..._u32(4), ...ascii.encode('demo')]);
+  return opening;
+}
+
 void main() {
   test('DES matches the textbook vector', () {
     final key = Uint8List.fromList([0x13, 0x34, 0x57, 0x79, 0x9B, 0xBC, 0xDF, 0xF1]);
@@ -68,98 +136,81 @@ void main() {
     final pacer = FramePacer(fps: 60, maxMbps: 8, clock: clock); // 8 Mbps = 1 byte/µs, 250 KB burst
     pacer.onRequest();
     clock.now = 5000;
-    expect(pacer.onFrame(1000).inMicroseconds, 16666 - 5000, reason: 'frame interval dominates');
+    pacer.onReceived(1000);
+    expect(pacer.nextDelay().inMicroseconds, 16666 - 5000, reason: 'frame interval dominates');
 
-    pacer.onRequest();
     clock.now = 40000;
-    // A 1 MB frame overdraws the bucket by ~750 KB (minus refill): wait until it is paid back.
-    final wait = pacer.onFrame(1000000).inMicroseconds;
+    pacer.onRequest();
+    pacer.onReceived(1000000); // overdraws the bucket by ~750 KB
+    final wait = pacer.nextDelay().inMicroseconds;
     expect(wait, greaterThan(700000));
     expect(wait, lessThan(760000));
 
     pacer.configure(fps: 15, maxMbps: 0);
-    pacer.onRequest();
-    expect(pacer.onFrame(50000000).inMicroseconds, 66666, reason: 'unlimited bandwidth');
+    pacer.onReceived(50000000);
+    expect(pacer.nextDelay().inMicroseconds, 66666, reason: 'unlimited bandwidth');
   });
 
-  test('RFB session: auth, decoders, resize, pixel-format switch, input and clipboard', () async {
+  test('RFB session: auth, decoders, pipelining, resize, input, clipboard, log', () async {
     final pipe = _Pipe();
-    final server = pipe.server;
-    final opening = const RfbProtocol(_NoJpeg()).open(pipe, const StreamSettings(), password: () async => 'secret');
-
-    // -- handshake: RFB 3.8 with VNC authentication
-    pipe.send(ascii.encode('RFB 003.008\n'));
-    expect(ascii.decode(await server.read(12)), 'RFB 003.008\n');
-    pipe.send([1, 2]);
-    expect(await server.u8(), 2);
-    final challenge = Uint8List.fromList(List.generate(16, (i) => i * 7));
-    pipe.send(challenge);
-    expect(await server.read(16), vncAuthResponse('secret', challenge));
-    pipe.send(_u32(0));
-    expect(await server.u8(), 1, reason: 'shared ClientInit');
-    pipe.send([..._u16(8), ..._u16(4), ...List.filled(16, 0), ..._u32(4), ...ascii.encode('demo')]);
-    final RemoteDesktopSession session = await opening;
+    final log = ConnectionLog();
+    final client = _ClientMessages(pipe.server);
+    final session = await _handshake(pipe, const StreamSettings(), log);
     expect(session.name, 'demo');
 
     // -- client setup: SetPixelFormat (32bpp), SetEncodings, full update request
-    final pf = await server.read(20);
+    final pf = await client.next();
     expect((pf[0], pf[4], pf[7]), (0, 32, 1), reason: 'type 0, 32 bpp, true colour');
-    final encodingCount = ByteData.sublistView(await server.read(4)).getUint16(2);
-    final encodings = ByteData.sublistView(await server.read(encodingCount * 4));
-    final advertised = [for (var i = 0; i < encodingCount; i++) encodings.getInt32(i * 4)];
+    final enc = ByteData.sublistView(await client.next());
+    final advertised = [for (var i = 0; i < enc.getUint16(2); i++) enc.getInt32(4 + i * 4)];
     expect(advertised.take(4), [7, 16, 1, 0], reason: 'Tight, ZRLE, CopyRect, Raw');
-    expect(advertised, containsAll([-27, -250, -239, -308, -1063131698]), reason: 'JPEG 5, zlib 6, cursor, ExtDesktopSize, ExtClipboard');
-    expect((await server.read(10))[1], 0, reason: 'first request is non-incremental');
+    expect(advertised, containsAll([-27, -250, -239, -308, -1063131698]));
+    expect((await client.request())[1], 0, reason: 'first request is non-incremental');
 
-    // -- one update exercising every decoder
+    // -- pipelining: the next request goes out while this update is still arriving
     final zrle = ZLibCodec().encode([
       130, 255, 0, 0, 0, 0, 255, // palette RLE, 2 colours: red, blue
       0 | 128, 5, // 6 × red
       1 | 128, 5, // 6 × blue
     ]);
-    final update = [
-      0, 0, ..._u16(6),
+    final frame = session.frames.first;
+    pipe.send([0, 0, ..._u16(6)]);
+    expect((await client.request())[1], 1, reason: 'incremental request sent ahead of the rectangles');
+    pipe.send([
       ..._rect(0, 0, 2, 1, 0), 10, 20, 30, 0, 40, 50, 60, 0, // Raw
       ..._rect(2, 0, 2, 2, 7), 0x80, 1, 2, 3, // Tight fill
       ..._rect(4, 0, 2, 1, 1), ..._u16(0), ..._u16(0), // CopyRect from (0,0)
       ..._rect(6, 0, 2, 2, 7), 0x40, 1, 1, 9, 9, 9, 7, 7, 7, 0x80, 0x40, // Tight palette, 2 colours
       ..._rect(0, 1, 4, 3, 16), ..._u32(zrle.length), ...zrle, // ZRLE
       ..._rect(0, 0, 8, 4, -308), 1, 0, 0, 0, ..._u32(7), ..._u16(0), ..._u16(0), ..._u16(8), ..._u16(4), ..._u32(0),
-    ];
-    var frame = session.frames.first;
-    pipe.send(update);
+    ]);
     await frame;
 
     final px = session.frame.rgba.buffer.asUint32List();
     int at(int x, int y) => px[y * 8 + x];
     expect(at(0, 0), _rgb(10, 20, 30));
     expect(at(1, 0), _rgb(40, 50, 60));
-    expect(at(3, 0), _rgb(1, 2, 3), reason: "Tight fill (row 1 is overwritten by ZRLE)");
+    expect(at(3, 0), _rgb(1, 2, 3), reason: 'Tight fill (row 1 is overwritten by ZRLE)');
     expect(at(4, 0), _rgb(10, 20, 30), reason: 'CopyRect');
     expect((at(6, 0), at(7, 0), at(6, 1), at(7, 1)), (_rgb(7, 7, 7), _rgb(9, 9, 9), _rgb(9, 9, 9), _rgb(7, 7, 7)));
     expect((at(0, 1), at(1, 2), at(2, 2), at(3, 3)), (_rgb(255, 0, 0), _rgb(255, 0, 0), _rgb(0, 0, 255), _rgb(0, 0, 255)));
     expect(session.canResize, isTrue);
+    expect(session.takeEncodingStats().keys, containsAll(['Raw', 'Tight', 'CopyRect', 'ZRLE']));
+    expect(session.takeEncodingStats(), isEmpty, reason: 'stats reset after each read');
 
-    // -- commands go out in order, before the paced update request
+    // -- commands; a colour-depth change is ignored mid-stream (it needs a new connection)
     session
       ..resize(1024, 768)
+      ..applySettings(const StreamSettings(colorDepth: ColorDepth.high, quality: ImageQuality.low))
       ..sendKey(0x61, down: true)
-      ..sendPointer(3, 2, 1)
-      ..applySettings(const StreamSettings(colorDepth: ColorDepth.high));
-    final setSize = await server.read(24);
+      ..sendPointer(3, 2, 1);
     // SetDesktopSize 1024×768, one screen keeping the server's screen id 7.
-    expect(setSize, [251, 0, 4, 0, 3, 0, 1, 0, 0, 0, 0, 7, 0, 0, 0, 0, 4, 0, 3, 0, 0, 0, 0, 0]);
-    expect(await server.read(8), [4, 1, 0, 0, 0, 0, 0, 0x61]);
-    expect(await server.read(6), [5, 1, 0, 3, 0, 2]);
-
-    // -- the colour-depth change is applied between updates, followed by a full refresh
-    final pf16 = await server.read(20);
-    expect((pf16[0], pf16[4]), (0, 16));
-    expect((await server.read(10))[1], 0);
-    frame = session.frames.first;
-    pipe.send([0, 0, ..._u16(1), ..._rect(0, 0, 1, 1, 0), 0x00, 0xF8]); // RGB565 pure red
-    await frame;
-    expect(session.frame.rgba.buffer.asUint32List()[0], _rgb(255, 0, 0));
+    expect(await client.command(), [251, 0, 4, 0, 3, 0, 1, 0, 0, 0, 0, 7, 0, 0, 0, 0, 4, 0, 3, 0, 0, 0, 0, 0]);
+    final reEnc = ByteData.sublistView(await client.command());
+    expect(reEnc.getUint8(0), 2, reason: 'quality change re-sends SetEncodings, no SetPixelFormat');
+    expect([for (var i = 0; i < reEnc.getUint16(2); i++) reEnc.getInt32(4 + i * 4)], contains(-31), reason: 'JPEG 1');
+    expect(await client.command(), [4, 1, 0, 0, 0, 0, 0, 0x61]);
+    expect(await client.command(), [5, 1, 0, 3, 0, 2]);
 
     // -- extended clipboard: caps exchange, then UTF-8 text both ways
     final clipboard = session.clipboard.first;
@@ -169,42 +220,62 @@ void main() {
     final provide = [..._u32(1 << 28 | 1), ...provided];
     pipe.send([3, 0, 0, 0, ..._u32(-provide.length & 0xffffffff), ...provide]);
     expect(await clipboard, '你好');
-
-    // Skip any paced update requests interleaved with the clipboard replies.
-    Future<ByteData> nextCut() async {
-      while (true) {
-        final type = (await server.read(1))[0];
-        if (type == 3) {
-          await server.read(9);
-          continue;
-        }
-        expect(type, 6);
-        final rest = ByteData.sublistView(await server.read(7));
-        return ByteData.sublistView(await server.read(-rest.getInt32(3)));
-      }
-    }
-
-    expect((await nextCut()).getUint32(0) & 1 << 24, isNonZero, reason: 'client caps');
+    int flags(Uint8List cut) => ByteData.sublistView(cut).getUint32(8);
+    expect(flags(await client.command()) & 1 << 24, isNonZero, reason: 'client caps');
     session.sendClipboard('世界');
-    expect((await nextCut()).getUint32(0), 1 << 27 | 1, reason: 'notify');
+    expect(flags(await client.command()), 1 << 27 | 1, reason: 'notify');
     pipe.send([3, 0, 0, 0, ..._u32(-4 & 0xffffffff), ..._u32(1 << 25 | 1)]); // request
-    final reply = await nextCut();
-    expect(reply.getUint32(0), 1 << 28 | 1);
-    final body = ZLibCodec().decode(reply.buffer.asUint8List(reply.offsetInBytes + 4));
+    final reply = await client.command();
+    expect(flags(reply), 1 << 28 | 1);
+    final body = ZLibCodec().decode(reply.sublist(12));
     expect(utf8.decode(body.sublist(4, body.length - 1)), '世界');
+
+    // -- the log tells the story
+    final text = log.export();
+    expect(text, contains('Security types offered: VncAuth → using VncAuth'));
+    expect(text, contains('Desktop "demo" 8×4'));
+    expect(text, contains('Server started sending ZRLE (lossless'));
+    expect(text, contains('Extended clipboard enabled (UTF-8)'));
 
     // -- a server disconnect ends the session with a reason
     await pipe._toClient.close();
     expect((await session.closed)?.kind, RemoteErrorKind.disconnected);
+    expect(log.export(), contains('Connection lost'));
+  });
+
+  test('8-bit colour: format negotiated at open, 1-byte pixels in every decoder', () async {
+    final pipe = _Pipe();
+    final client = _ClientMessages(pipe.server);
+    final session = await _handshake(pipe, const StreamSettings(colorDepth: ColorDepth.low), ConnectionLog(), w: 4, h: 2);
+    final pf = await client.next();
+    expect((pf[4], pf[5], pf[7], pf[9], pf[11], pf[13]), (8, 8, 1, 7, 7, 3), reason: '8 bpp BGR233');
+    await client.next(); // SetEncodings
+    await client.request();
+
+    // BGR233: red = 0x07, green = 0x38, blue = 0xC0.
+    final zrle = ZLibCodec().encode([1, 0xC0]); // one solid blue tile, 1-byte CPIXEL
+    final frame = session.frames.first;
+    pipe.send([
+      0, 0, ..._u16(3),
+      ..._rect(0, 0, 1, 1, 0), 0x07, // Raw red
+      ..._rect(1, 0, 1, 1, 7), 0x80, 0x38, // Tight fill green
+      ..._rect(0, 1, 4, 1, 16), ..._u32(zrle.length), ...zrle, // ZRLE blue
+    ]);
+    await frame;
+    final px = session.frame.rgba.buffer.asUint32List();
+    expect((px[0], px[1], px[4], px[7]), (_rgb(255, 0, 0), _rgb(0, 255, 0), _rgb(0, 0, 255), _rgb(0, 0, 255)));
+    await session.close();
   });
 
   test('handshake reports unsupported security types', () async {
     final pipe = _Pipe();
-    final opening = const RfbProtocol(_NoJpeg()).open(pipe, const StreamSettings(), password: () async => null);
-    pipe.send([...ascii.encode('RFB 003.008\n'), 2, 19, 30]);
+    final log = ConnectionLog();
+    final opening = const RfbProtocol(_NoJpeg()).open(pipe, const StreamSettings(), password: () async => null, log: log);
+    pipe.send([...ascii.encode('RFB 003.889\n'), 2, 19, 30]);
     await expectLater(
       opening,
       throwsA(isA<RemoteException>().having((e) => e.kind, 'kind', RemoteErrorKind.unsupportedSecurity)),
     );
+    expect(log.export(), contains('(Apple)'));
   });
 }

@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pixel_remote/application/connect_session.dart';
 import 'package:pixel_remote/application/controllers.dart';
 import 'package:pixel_remote/application/providers.dart';
+import 'package:pixel_remote/application/connection_log.dart';
 import 'package:pixel_remote/application/session_monitor.dart';
 import 'package:pixel_remote/domain/entities/app_preferences.dart';
 import 'package:pixel_remote/domain/entities/connection_profile.dart';
@@ -24,6 +25,7 @@ import 'package:pixel_remote/domain/repositories/repositories.dart';
 import 'package:pixel_remote/domain/services/platform_services.dart';
 import 'package:pixel_remote/domain/services/remote_desktop.dart';
 import 'package:pixel_remote/domain/services/secure_tunnel.dart';
+import 'package:pixel_remote/domain/services/session_log.dart';
 import 'package:pixel_remote/presentation/pixel_remote_app.dart';
 
 final _outDir = Platform.environment['SCREENSHOT_DIR'];
@@ -81,15 +83,6 @@ final class _Tunnel implements SecureTunnel {
   Future<void> close() async {}
 }
 
-final class _Channel implements ByteChannel {
-  @override
-  Stream<Uint8List> get input => const Stream.empty();
-  @override
-  void write(List<int> bytes) {}
-  @override
-  Future<void> close() async {}
-}
-
 /// A synthetic remote desktop: wallpaper, a document window and a terminal.
 final class _Desktop implements RemoteDesktopSession, FrameView {
   _Desktop() {
@@ -136,6 +129,8 @@ final class _Desktop implements RemoteDesktopSession, FrameView {
   @override
   Stream<String> get clipboard => const Stream.empty();
   @override
+  Map<String, int> takeEncodingStats() => const {};
+  @override
   bool get canResize => true;
   @override
   Future<RemoteException?> get closed => Completer<RemoteException?>().future;
@@ -172,6 +167,7 @@ Future<void> _loadFonts() async {
 
   await load('Sans', '/System/Library/Fonts/SFNS.ttf');
   await load('Serif', '/System/Library/Fonts/NewYork.ttf');
+  await load('Menlo', '/System/Library/Fonts/SFNSMono.ttf');
   await load('PingFang SC', '/Library/Fonts/Arial Unicode.ttf');
   await load('MaterialIcons', '${Platform.environment['FLUTTER_ROOT']}/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf');
 }
@@ -197,6 +193,7 @@ Future<void> _shoot(
   required AppPreferences prefs,
   SessionState session = const SessionIdle(),
   bool withStats = false,
+  String encoding = 'Tight JPEG',
   Future<void> Function(WidgetTester tester)? act,
 }) async {
   tester.view
@@ -213,6 +210,7 @@ Future<void> _shoot(
         fps: 58.6,
         width: 1280,
         height: 800,
+        encoding: encoding,
       ),
   ];
   await tester.pumpWidget(
@@ -252,8 +250,46 @@ ActiveSession _activeSession() {
     tunnel: tunnel,
     desktop: desktop,
     remoteOs: HostOs.linux,
-    monitor: SessionMonitor(tunnel: tunnel, traffic: MeteredChannel(_Channel()), desktop: desktop),
+    monitor: SessionMonitor(tunnel: tunnel, traffic: TrafficMeter(), desktop: desktop),
+    log: _sampleLog(),
   );
+}
+
+/// What a real connection to a TigerVNC server writes to the log.
+ConnectionLog _sampleLog() {
+  final log = ConnectionLog();
+  for (final (level, src, msg) in const [
+    (LogLevel.info, 'connect', '"deploy@build-server.lan" resolves to deploy@build-server.lan:22'),
+    (LogLevel.info, 'ssh', 'Connecting to build-server.lan:22 as deploy'),
+    (LogLevel.info, 'ssh', 'TCP connected in 4 ms'),
+    (LogLevel.info, 'ssh', 'Offering 1 ssh-agent key(s) and 1 key file(s)'),
+    (LogLevel.info, 'ssh', 'Server version: SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu13'),
+    (LogLevel.info, 'ssh', 'Key exchange: curve25519-sha256'),
+    (LogLevel.info, 'ssh', 'Cipher client→server: chacha20-poly1305@openssh.com'),
+    (LogLevel.info, 'ssh', 'Cipher server→client: chacha20-poly1305@openssh.com'),
+    (LogLevel.info, 'ssh', 'Host key ssh-ed25519 SHA256:3xAmPLeFiNgErPrInT0nLyNoTaReAlKeY000000000 is trusted'),
+    (LogLevel.info, 'ssh', 'Trying PublicKey authentication'),
+    (LogLevel.info, 'ssh', 'Authenticated as deploy; SSH ready after 61 ms'),
+    (LogLevel.info, 'connect', 'Remote OS: linux'),
+    (LogLevel.info, 'tunnel', 'Opened channel to localhost:5900 on the remote side'),
+    (LogLevel.info, 'rfb', 'Server speaks RFB 003.008; using RFB 3.8'),
+    (LogLevel.info, 'rfb', 'Security types offered: VncAuth → using VncAuth'),
+    (LogLevel.info, 'rfb', 'VNC password accepted'),
+    (LogLevel.info, 'rfb', 'Desktop "build-server:1 (deploy)" 1280×800; server pixel format 32 bpp, depth 24, little-endian'),
+    (LogLevel.info, 'rfb', 'Requesting pixel format 32 bpp, depth 24 (R8G8B8)'),
+    (LogLevel.info, 'rfb', 'Encodings offered: Tight, ZRLE, CopyRect, Raw, JPEG quality 5, zlib level 6, Cursor, DesktopSize, ExtendedDesktopSize, LastRect, DesktopName, ExtendedClipboard'),
+    (LogLevel.info, 'connect', 'Connected in 118 ms'),
+    (LogLevel.info, 'rfb', 'Server supports remote resizing (ExtendedDesktopSize), 1 screen(s)'),
+    (LogLevel.info, 'rfb', 'Server started sending Tight'),
+    (LogLevel.info, 'rfb', 'Server started sending Tight JPEG'),
+    (LogLevel.info, 'rfb', 'Extended clipboard enabled (UTF-8)'),
+    (LogLevel.info, 'session', 'Colour depth 24-bit → 8-bit: opening a new stream alongside the current one'),
+    (LogLevel.warning, 'session', 'The server did not accept 8-bit colour (RemoteException(disconnected)); keeping 24-bit'),
+    (LogLevel.info, 'rfb', '583 updates in 10 s, 5.6 MB (4.7 Mbit/s), avg 9.8 KB and 2.1 ms per update; Tight JPEG 1204×4.9 MB, Tight 3120×0.6 MB, CopyRect 12×0.0 KB'),
+  ]) {
+    log.add(level, src, msg);
+  }
+  return log;
 }
 
 void main() {
@@ -274,12 +310,12 @@ void main() {
   testWidgets('home, Chinese, dark', (t) => _shoot(t, 'home_zh_dark', prefs: zhDark), skip: skip);
   testWidgets(
     'connecting',
-    (t) => _shoot(t, 'connecting_en_light', prefs: en, session: SessionConnecting(_profiles.first, ConnectStage.tunnelling)),
+    (t) => _shoot(t, 'connecting_en_light', prefs: en, session: SessionConnecting(_profiles.first, ConnectStage.tunnelling, _sampleLog())),
     skip: skip,
   );
   testWidgets(
     'connection error',
-    (t) => _shoot(t, 'error_zh_dark', prefs: zhDark, session: const SessionIdle(RemoteException(RemoteErrorKind.vncUnavailable, 'localhost:5900'))),
+    (t) => _shoot(t, 'error_zh_dark', prefs: zhDark, session: SessionIdle(const RemoteException(RemoteErrorKind.vncUnavailable, 'localhost:5900'), _sampleLog())),
     skip: skip,
   );
   testWidgets(
@@ -295,7 +331,19 @@ void main() {
       prefs: zhDark,
       session: SessionActive(_activeSession()),
       withStats: true,
+      encoding: 'ZRLE',
       act: (t) => t.tap(find.byIcon(Icons.tune_rounded)),
+    ),
+    skip: skip,
+  );
+  testWidgets(
+    'session connection log',
+    (t) => _shoot(
+      t,
+      'session_log_en_light',
+      prefs: en,
+      session: SessionActive(_activeSession()),
+      act: (t) => t.tap(find.byIcon(Icons.receipt_long_rounded)),
     ),
     skip: skip,
   );

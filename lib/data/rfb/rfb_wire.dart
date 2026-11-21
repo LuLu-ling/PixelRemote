@@ -11,7 +11,37 @@ abstract final class Encoding {
 
   static int jpegQuality(int level) => -32 + level;
   static int compressLevel(int level) => -256 + level;
+
+  static String name(int e) => switch (e) {
+        raw => 'Raw',
+        copyRect => 'CopyRect',
+        2 => 'RRE',
+        5 => 'Hextile',
+        tight => 'Tight',
+        zrle => 'ZRLE',
+        cursor => 'Cursor',
+        desktopSize => 'DesktopSize',
+        lastRect => 'LastRect',
+        desktopName => 'DesktopName',
+        extendedDesktopSize => 'ExtendedDesktopSize',
+        extendedClipboard => 'ExtendedClipboard',
+        >= -32 && <= -23 => 'JPEG quality ${e + 32}',
+        >= -256 && <= -247 => 'zlib level ${e + 256}',
+        _ => 'encoding $e',
+      };
 }
+
+String securityTypeName(int t) => switch (t) {
+      1 => 'None',
+      2 => 'VncAuth',
+      5 => 'RA2',
+      6 => 'RA2ne',
+      16 => 'Tight',
+      18 => 'TLS',
+      19 => 'VeNCrypt',
+      30 => 'Apple DH',
+      _ => '#$t',
+    };
 
 final class RfbScreen {
   const RfbScreen(this.id, this.x, this.y, this.width, this.height, this.flags);

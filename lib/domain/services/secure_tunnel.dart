@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import '../entities/ssh_address.dart';
+import 'session_log.dart';
 
 /// A bidirectional byte pipe, e.g. one SSH direct-tcpip channel.
 abstract interface class ByteChannel {
@@ -28,7 +29,7 @@ abstract interface class SecureTunnel {
 }
 
 abstract interface class TunnelConnector {
-  Future<SecureTunnel> connect(SshEndpoint endpoint);
+  Future<SecureTunnel> connect(SshEndpoint endpoint, SessionLog log);
 }
 
 /// Expands what the user typed (aliases, defaults) into a concrete endpoint.
